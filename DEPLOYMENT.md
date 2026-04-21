@@ -303,11 +303,11 @@ git clone https://github.com/markovrv/aksel26-cmd01-mvp.git
 cd mvp
 
 # Постройте и запустите
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 
 # Инициализируйте базу
-docker-compose exec server node init-seed.js
+docker compose exec server node init-seed.js
 
 # Проверьте что работает
 curl http://localhost:21426/api/events | head
@@ -321,13 +321,13 @@ curl http://localhost:21426/api/events | head
 
 ```bash
 # Перезапуск только сервера
-docker-compose restart server
+docker compose restart server
 
 # Перезапуск только клиента
-docker-compose restart client
+docker compose restart client
 
 # Перезапуск всех
-docker-compose restart
+docker compose restart
 ```
 
 ### Получение информации о контейнерах
