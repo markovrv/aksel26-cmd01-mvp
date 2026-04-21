@@ -297,7 +297,7 @@ docker-compose down -v -r all
 
 ```bash
 # Клонируйте или скопируйте проект
-git clone <repo-url>  # или копирование вручную
+git clone https://github.com/markovrv/aksel26-cmd01-mvp.git
 
 # Перейдите в директорию проекта
 cd mvp

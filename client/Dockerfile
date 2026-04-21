@@ -3,9 +3,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Use npm registry mirror for reliability
+RUN npm config set registry https://registry.npmjs.org/
+
 COPY package*.json ./
 
-RUN npm ci
+RUN npm install --include=dev
 
 COPY . .
 
