@@ -14,6 +14,11 @@ function Register({ onLogin }) {
     specialization: '',
     company_name: '',
     company_description: '',
+    inn: '',
+    city: '',
+    website: '',
+    contact_person: '',
+    phone: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -74,33 +79,111 @@ function Register({ onLogin }) {
             <input type="password" name="password" value={formData.password} onChange={handleChange} required />
           </div>
 
-          {role === 'student' && (
-            <>
-              <div className="form-group">
-                <label>University / School</label>
-                <input type="text" name="university" value={formData.university} onChange={handleChange} />
-              </div>
+{role === 'student' && (
+              <>
+                <div className="form-group">
+                  <label>First Name</label>
+                  <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} required />
+                </div>
 
-              <div className="form-group">
-                <label>Specialization</label>
-                <input type="text" name="specialization" value={formData.specialization} onChange={handleChange} />
-              </div>
-            </>
-          )}
+                <div className="form-group">
+                  <label>Last Name</label>
+                  <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} required />
+                </div>
 
-          {role === 'company' && (
-            <>
-              <div className="form-group">
-                <label>Company Name</label>
-                <input type="text" name="company_name" value={formData.company_name} onChange={handleChange} />
-              </div>
+                <div className="form-group">
+                  <label>University / College</label>
+                  <input type="text" name="university" value={formData.university} onChange={handleChange} />
+                </div>
 
-              <div className="form-group">
-                <label>Company Description</label>
-                <textarea name="company_description" value={formData.company_description} onChange={handleChange}></textarea>
-              </div>
-            </>
-          )}
+                <div className="form-group">
+                  <label>Course / Year of Study</label>
+                  <input type="number" name="course" value={formData.course} onChange={handleChange} min="1" max="6" />
+                </div>
+
+                <div className="form-group">
+                  <label>Specialization</label>
+                  <input type="text" name="specialization" value={formData.specialization} onChange={handleChange} />
+                </div>
+
+                <div className="form-group">
+                  <label>City</label>
+                  <input type="text" name="city" value={formData.city} onChange={handleChange} />
+                </div>
+
+                <div className="form-group">
+                  <label>Phone (Optional)</label>
+                  <input type="tel" name="phone" value={formData.phone} onChange={handleChange} />
+                </div>
+
+                <div className="form-group">
+                  <label>Resume (PDF)</label>
+                  <input type="file" name="resume" accept=".pdf" onChange={handleChange} />
+                  <p className="help-text">Upload your resume in PDF format</p>
+                </div>
+              </>
+            )}
+
+            {role === 'company' && (
+              <>
+                <div className="form-group">
+                  <label>Company Name (Full)</label>
+                  <input type="text" name="name" value={formData.name} onChange={handleChange} required />
+                </div>
+
+                <div className="form-group">
+                  <label>Short Description (up to 500 characters)</label>
+                  <textarea name="short_description" value={formData.short_description} onChange={handleChange} maxlength="500"></textarea>
+                  <p className="help-text">Brief description of your company</p>
+                </div>
+
+                <div className="form-group">
+                  <label>Full Description</label>
+                  <textarea name="full_description" value={formData.full_description} onChange={handleChange}></textarea>
+                </div>
+
+                <div className="form-group">
+                  <label>City</label>
+                  <input type="text" name="city" value={formData.city} onChange={handleChange} required />
+                </div>
+
+                <div className="form-group">
+                  <label>Address (for map display)</label>
+                  <input type="text" name="address" value={formData.address} onChange={handleChange} required />
+                </div>
+
+                <div className="form-group">
+                  <label>Latitude (for map)</label>
+                  <input type="number" name="latitude" value={formData.latitude} onChange={handleChange} step="any" />
+                </div>
+
+                <div className="form-group">
+                  <label>Longitude (for map)</label>
+                  <input type="number" name="longitude" value={formData.longitude} onChange={handleChange} step="any" />
+                </div>
+
+                <div className="form-group">
+                  <label>Company Logo</label>
+                  <input type="file" name="logo" accept=".jpg,.jpeg,.png" onChange={handleChange} />
+                  <p className="help-text">Upload company logo (JPG, PNG)</p>
+                </div>
+
+                <div className="form-group">
+                  <label>Contact Person (Full Name)</label>
+                  <input type="text" name="contact_person" value={formData.contact_person} onChange={handleChange} required />
+                </div>
+
+                <div className="form-group">
+                  <label>Contact Phone</label>
+                  <input type="tel" name="contact_phone" value={formData.contact_phone} onChange={handleChange} required />
+                </div>
+
+                <div className="form-group">
+                  <label>Contact Email</label>
+                  <input type="email" name="contact_email" value={formData.contact_email} onChange={handleChange} required />
+                </div>
+              </>
+            )}
 
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Registering...' : 'Register'}

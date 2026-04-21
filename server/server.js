@@ -52,64 +52,86 @@ const logAction = async (userId, userType, action, entityType = null, entityId =
   );
 };
 
-// ============= STUDENT AUTH ROUTES =============
+// ============= UNIFIED AUTH ROUTES =============
 
-app.post('/api/auth/student/register', async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, full_name, university, course, city, phone } = req.body;
+    const { role, email, password, ...profileData } = req.body;
 
-    if (!email || !password || !full_name) {
+    if (!email || !password || !role) {
       return res.status(400).json({ error: 'Заполните обязательные поля' });
     }
 
-    const existing = await get('SELECT id FROM students WHERE email = ?', [email]);
+    if (!['student', 'company', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Неверная роль' });
+    }
+
+    const existing = await get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
       return res.status(400).json({ error: 'Email уже зарегистрирован' });
     }
 
-    const studentId = uuidv4();
+    const userId = uuidv4();
     const hashedPassword = await hashPassword(password);
 
     await run(
-      'INSERT INTO students (id, email, password, full_name, university, course, city, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [studentId, email, hashedPassword, full_name, university, course, city, phone]
+      'INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)',
+      [userId, email, hashedPassword, role]
     );
 
-    const token = generateToken(studentId);
-    await createSession(studentId, 'student', token);
-    await logAction(studentId, 'student', 'register');
+    // Create profile based on role
+    if (role === 'student') {
+      await run(
+        'INSERT INTO student_profiles (id, user_id, first_name, last_name, university, course, specialization, city, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [uuidv4(), userId, profileData.first_name, profileData.last_name, profileData.university, profileData.course, profileData.specialization, profileData.city, profileData.phone]
+      );
+    } else if (role === 'company') {
+      await run(
+        'INSERT INTO company_profiles (id, user_id, name, short_description, full_description, city, address, latitude, longitude, contact_person, contact_phone, contact_email, moderation_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [uuidv4(), userId, profileData.name, profileData.short_description, profileData.full_description, profileData.city, profileData.address, profileData.latitude, profileData.longitude, profileData.contact_person, profileData.contact_phone, profileData.contact_email, 'moderation']
+      );
+    } else if (role === 'admin') {
+      await run(
+        'INSERT INTO admin_profiles (id, user_id, name) VALUES (?, ?, ?)',
+        [uuidv4(), userId, profileData.name]
+      );
+    }
 
-    const student = await get('SELECT id, email, full_name, university, course, city FROM students WHERE id = ?', [studentId]);
-    res.status(201).json({ student, token });
+    const token = generateToken(userId);
+    await createSession(userId, role, token);
+    await logAction(userId, role, 'register');
+
+    const user = await get('SELECT id, email, role FROM users WHERE id = ?', [userId]);
+    res.status(201).json({ user, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/auth/student/login', async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    if (!email || !password || !role) {
+      return res.status(400).json({ error: 'Email, пароль и роль обязательны' });
     }
 
-    const student = await get('SELECT * FROM students WHERE email = ?', [email]);
-    if (!student) {
+    const user = await get('SELECT * FROM users WHERE email = ? AND role = ?', [email, role]);
+    if (!user) {
       return res.status(401).json({ error: 'Неверные учетные данные' });
     }
 
-    const passwordMatch = await comparePasswords(password, student.password);
+    const passwordMatch = await comparePasswords(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Неверные учетные данные' });
     }
 
-    const token = generateToken(student.id);
-    await createSession(student.id, 'student', token);
-    await logAction(student.id, 'student', 'login');
+    const token = generateToken(user.id);
+    await createSession(user.id, role, token);
+    await logAction(user.id, role, 'login');
 
-    const { password: _, ...studentWithoutPassword } = student;
-    res.json({ student: studentWithoutPassword, token });
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -149,64 +171,74 @@ app.post('/api/auth/admin/register', async (req, res) => {
   }
 });
 
-// ============= COMPANY AUTH ROUTES =============
+// ============= COMPANY PROFILE ROUTES =============
 
-app.post('/api/auth/company/register', async (req, res) => {
+// Get companies with active cases for map display
+app.get('/api/map/companies', async (req, res) => {
   try {
-    const { email, password, name, inn, city, website, contact_person, phone } = req.body;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    let studentId = null;
 
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    // Get student ID if authenticated
+    if (token) {
+      const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'student']);
+      if (session) {
+        const studentProfile = await get('SELECT id FROM student_profiles WHERE user_id = ?', [session.user_id]);
+        studentId = studentProfile?.id;
+      }
     }
 
-    const existing = await get('SELECT id FROM companies WHERE email = ?', [email]);
-    if (existing) {
-      return res.status(400).json({ error: 'Email уже зарегистрирован' });
-    }
+    // Get companies with their coordinates and case stats
+    const companies = await all(`
+      SELECT
+        cp.id,
+        cp.user_id as company_user_id,
+        cp.name,
+        cp.city,
+        cp.latitude,
+        cp.longitude,
+        cp.short_description,
+        COUNT(c.id) as active_cases_count,
+        CASE WHEN ? IS NOT NULL AND EXISTS(
+          SELECT 1 FROM solutions s
+          JOIN cases c2 ON s.case_id = c2.id
+          WHERE (c2.company_id = cp.id OR c2.company_id = cp.user_id) AND s.student_id = ?
+        ) THEN 1 ELSE 0 END as has_student_solution
+      FROM company_profiles cp
+      LEFT JOIN cases c ON (cp.id = c.company_id OR cp.user_id = c.company_id) AND c.status = 'active'
+      WHERE cp.moderation_status = 'active'
+        AND cp.latitude IS NOT NULL
+        AND cp.longitude IS NOT NULL
+      GROUP BY cp.id, cp.user_id, cp.name, cp.city, cp.latitude, cp.longitude, cp.short_description
+      ORDER BY cp.name
+    `, [studentId, studentId]);
 
-    const companyId = uuidv4();
-    const hashedPassword = await hashPassword(password);
-
-    await run(
-      'INSERT INTO companies (id, email, password, name, inn, city, website, contact_person, phone, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [companyId, email, hashedPassword, name, inn, city, website, contact_person, phone, 'pending']
-    );
-
-    const token = generateToken(companyId);
-    await createSession(companyId, 'company', token);
-    await logAction(companyId, 'company', 'register');
-
-    const company = await get('SELECT id, email, name, city, status FROM companies WHERE id = ?', [companyId]);
-    res.status(201).json({ company, token });
+    res.json(companies);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/auth/company/login', async (req, res) => {
+app.get('/api/companies/:id', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const company = await get(
+      'SELECT cp.*, u.email FROM company_profiles cp JOIN users u ON cp.user_id = u.id WHERE cp.id = ? AND cp.moderation_status = ?',
+      [req.params.id, 'active']
+    );
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
-    }
-
-    const company = await get('SELECT * FROM companies WHERE email = ?', [email]);
     if (!company) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
+      return res.status(404).json({ error: 'Компания не найдена' });
     }
 
-    const passwordMatch = await comparePasswords(password, company.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
-    }
-
-    const token = generateToken(company.id);
-    await createSession(company.id, 'company', token);
-    await logAction(company.id, 'company', 'login');
-
-    const { password: _, ...companyWithoutPassword } = company;
-    res.json({ company: companyWithoutPassword, token });
+    const cases = await all(
+      `SELECT * FROM cases
+       WHERE (company_id = ? OR company_id = (SELECT user_id FROM company_profiles WHERE id = ?))
+         AND status = 'active'
+         AND datetime(application_deadline) >= datetime('now')
+       ORDER BY created_at DESC`,
+      [req.params.id, req.params.id]
+    );
+    res.json({ company, cases });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -229,103 +261,99 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/auth/me', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const userType = req.headers['x-user-type'];
 
-    if (!token || !userType) {
+    if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    const session = await get('SELECT user_id, user_type FROM sessions WHERE token = ?', [token]);
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+
     let user;
-    if (userType === 'student') {
-      user = await get('SELECT id, email, full_name, university, course, city FROM students WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
-    } else if (userType === 'company') {
-      user = await get('SELECT id, email, name, city, status FROM companies WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
-    } else if (userType === 'admin') {
-      user = await get('SELECT id, email, name FROM admins WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
+    if (session.user_type === 'student') {
+      user = await get('SELECT sp.*, u.email FROM student_profiles sp JOIN users u ON sp.user_id = u.id WHERE sp.user_id = ?', [session.user_id]);
+    } else if (session.user_type === 'company') {
+      user = await get('SELECT cp.*, u.email FROM company_profiles cp JOIN users u ON cp.user_id = u.id WHERE cp.user_id = ?', [session.user_id]);
+    } else if (session.user_type === 'admin') {
+      user = await get('SELECT ap.*, u.email FROM admin_profiles ap JOIN users u ON ap.user_id = u.id WHERE ap.user_id = ?', [session.user_id]);
     }
 
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    res.json({ user, userType });
+    res.json({ user, userType: session.user_type });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============= EVENTS (МЕРОПРИЯТИЯ) =============
+// ============= CASES =============
 
-// Get all active events
-app.get('/api/events', async (req, res) => {
+// Get all active cases
+app.get('/api/cases', async (req, res) => {
   try {
-    const type = req.query.type;
-    const city = req.query.city;
     const search = req.query.search;
+    const type = req.query.type;
+
+    if (type && type !== 'case') {
+      return res.json([]);
+    }
 
     let query = `
-      SELECT e.*, c.name as company_name, c.city as company_city
-      FROM events e
-      JOIN companies c ON e.company_id = c.id
-      WHERE e.status = 'active' AND c.status = 'active'
+      SELECT c.*, cp.id as company_profile_id, cp.user_id as company_user_id, cp.name as company_name, cp.city as company_city
+      FROM cases c
+      JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+      WHERE c.status = 'active'
+        AND cp.moderation_status = 'active'
+        AND datetime(c.application_deadline) >= datetime('now')
     `;
     const params = [];
 
-    if (type) {
-      query += ' AND e.type = ?';
-      params.push(type);
-    }
-
-    if (city) {
-      query += ' AND c.city = ?';
-      params.push(city);
-    }
-
     if (search) {
-      query += ' AND (e.title LIKE ? OR c.name LIKE ?)';
+      query += ' AND (c.title LIKE ? OR cp.name LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
 
-    query += ' ORDER BY e.created_at DESC';
+    query += ' ORDER BY c.created_at DESC';
 
-    const events = await all(query, params);
-    res.json(events);
+    const cases = await all(query, params);
+    res.json(cases);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Get event detail
-app.get('/api/events/:id', async (req, res) => {
+// Get case detail
+app.get('/api/cases/:id', async (req, res) => {
   try {
-    const event = await get(
-      `SELECT e.*, c.name as company_name, c.description as company_description, c.city
-       FROM events e
-       JOIN companies c ON e.company_id = c.id
-       WHERE e.id = ?`,
+    const caseItem = await get(
+      `SELECT c.*, cp.name as company_name, cp.short_description as company_description, cp.city
+       FROM cases c
+       JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+       WHERE c.id = ?`,
       [req.params.id]
     );
 
-    if (!event) {
-      return res.status(404).json({ error: 'Мероприятие не найдено' });
+    if (!caseItem) {
+      return res.status(404).json({ error: 'Кейс не найден' });
     }
 
-    // Increment view count
-    await run('UPDATE events SET view_count = view_count + 1 WHERE id = ?', [req.params.id]);
-
-    res.json(event);
+    res.json(caseItem);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Create event (company only)
-app.post('/api/events', async (req, res) => {
+// Create case (company only)
+app.post('/api/cases', upload.single('task_file'), async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const { type, title, description, requirements, application_deadline, event_date, event_time, format, max_participants, file } = req.body;
+    const { title, description, requirements, application_deadline } = req.body;
 
-    if (!token || !type || !title || !application_deadline) {
+    if (!token || !title || !description || !application_deadline) {
       return res.status(400).json({ error: 'Заполните обязательные поля' });
     }
 
@@ -334,104 +362,75 @@ app.post('/api/events', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const company = await get('SELECT status FROM companies WHERE id = ?', [session.user_id]);
-    if (company.status !== 'active') {
+    const company = await get('SELECT id, moderation_status FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    if (company.moderation_status !== 'active') {
       return res.status(403).json({ error: 'Ваша компания не активна' });
     }
 
-    const eventId = uuidv4();
+    const caseId = uuidv4();
+    let taskFilePath = null;
+
+    // Handle file upload if present
+    if (req.file) {
+      taskFilePath = req.file.filename;
+    }
 
     await run(
-      `INSERT INTO events (id, company_id, type, title, description, requirements, application_deadline, event_date, event_time, format, max_participants, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [eventId, session.user_id, type, title, description, requirements, application_deadline, event_date, event_time, format, max_participants, 'pending']
+      `INSERT INTO cases (id, company_id, title, description, requirements, application_deadline, task_file_path, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [caseId, company.id, title, description, requirements, application_deadline, taskFilePath, 'draft']
     );
 
-    await logAction(session.user_id, 'company', 'create_event', 'event', eventId);
+    await logAction(session.user_id, 'company', 'create_case', 'case', caseId);
 
-    const newEvent = await get('SELECT * FROM events WHERE id = ?', [eventId]);
-    res.status(201).json(newEvent);
+    const newCase = await get('SELECT * FROM cases WHERE id = ?', [caseId]);
+    res.status(201).json(newCase);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============= APPLICATIONS (ЗАЯВКИ) =============
-
-// Submit application
-app.post('/api/applications', async (req, res) => {
+// Update case (company only)
+app.put('/api/cases/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const { event_id, text_content } = req.body;
+    const { title, description, requirements, application_deadline } = req.body;
 
-    if (!token || !event_id) {
+    if (!token || !title || !description || !application_deadline) {
       return res.status(400).json({ error: 'Заполните обязательные поля' });
     }
 
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'student']);
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'company']);
     if (!session) {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const event = await get('SELECT * FROM events WHERE id = ?', [event_id]);
-    if (!event) {
-      return res.status(404).json({ error: 'Мероприятие не найдено' });
+    const company = await get('SELECT id, user_id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    if (!company) {
+      return res.status(404).json({ error: 'Профиль компании не найден' });
     }
 
-    // Check deadline
-    if (new Date(event.application_deadline) < new Date()) {
-      return res.status(400).json({ error: 'Срок подачи заявок истек' });
+    const existingCase = await get('SELECT * FROM cases WHERE id = ? AND (company_id = ? OR company_id = ?)', [req.params.id, company.id, company.user_id]);
+    if (!existingCase) {
+      return res.status(404).json({ error: 'Кейс не найден или у вас нет прав на его редактирование' });
     }
-
-    const applicationId = uuidv4();
 
     await run(
-      `INSERT INTO applications (id, event_id, student_id, text_content, status)
-       VALUES (?, ?, ?, ?, ?)`,
-      [applicationId, event_id, session.user_id, text_content, 'new']
+      `UPDATE cases SET title = ?, description = ?, requirements = ?, application_deadline = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [title, description, requirements, application_deadline, req.params.id]
     );
 
-    await logAction(session.user_id, 'student', 'apply', 'event', event_id);
+    await logAction(session.user_id, 'company', 'update_case', 'case', req.params.id);
 
-    const application = await get('SELECT * FROM applications WHERE id = ?', [applicationId]);
-    res.status(201).json(application);
+    const updatedCase = await get('SELECT * FROM cases WHERE id = ?', [req.params.id]);
+    res.json(updatedCase);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Get student applications
-app.get('/api/student/applications', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'student']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const applications = await all(
-      `SELECT a.*, e.title, e.type, c.name as company_name
-       FROM applications a
-       JOIN events e ON a.event_id = e.id
-       JOIN companies c ON e.company_id = c.id
-       WHERE a.student_id = ?
-       ORDER BY a.created_at DESC`,
-      [session.user_id]
-    );
-
-    res.json(applications);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get company applications
-app.get('/api/company/applications', async (req, res) => {
+// Delete case (company only)
+app.delete('/api/cases/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
 
@@ -444,24 +443,192 @@ app.get('/api/company/applications', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const applications = await all(
-      `SELECT a.*, e.title, s.full_name, s.email, s.university
-       FROM applications a
-       JOIN events e ON a.event_id = e.id
-       JOIN students s ON a.student_id = s.id
-       WHERE e.company_id = ?
-       ORDER BY a.created_at DESC`,
-      [session.user_id]
-    );
+    const company = await get('SELECT id, user_id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    if (!company) {
+      return res.status(404).json({ error: 'Профиль компании не найден' });
+    }
 
-    res.json(applications);
+    const existingCase = await get('SELECT * FROM cases WHERE id = ? AND (company_id = ? OR company_id = ?)', [req.params.id, company.id, company.user_id]);
+    if (!existingCase) {
+      return res.status(404).json({ error: 'Кейс не найден или у вас нет прав на его удаление' });
+    }
+
+    await run('DELETE FROM solutions WHERE case_id = ?', [req.params.id]);
+    await run('DELETE FROM cases WHERE id = ?', [req.params.id]);
+
+    await logAction(session.user_id, 'company', 'delete_case', 'case', req.params.id);
+
+    res.json({ message: 'Кейс удален' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Update application status
-app.put('/api/applications/:id', async (req, res) => {
+// ============= SOLUTIONS =============
+
+// Submit solution
+app.post('/api/solutions', upload.single('file'), async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { case_id, text_content } = req.body;
+
+    if (!token || !case_id || !text_content) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'student']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    const studentProfile = await get('SELECT id FROM student_profiles WHERE user_id = ?', [session.user_id]);
+    if (!studentProfile) {
+      return res.status(404).json({ error: 'Профиль студента не найден' });
+    }
+
+    const caseItem = await get('SELECT * FROM cases WHERE id = ?', [case_id]);
+    if (!caseItem) {
+      return res.status(404).json({ error: 'Кейс не найден' });
+    }
+
+    // Check deadline
+    if (caseItem.status !== 'active') {
+      return res.status(400).json({ error: 'Кейс недоступен для откликов' });
+    }
+    if (new Date(caseItem.application_deadline) < new Date()) {
+      return res.status(400).json({ error: 'Срок подачи решений истек' });
+    }
+
+    const solutionId = uuidv4();
+    let filePath = null;
+    let fileName = null;
+
+    // Handle file upload if present
+    if (req.file) {
+      filePath = req.file.filename;
+      fileName = req.file.originalname;
+    }
+
+    await run(
+      `INSERT INTO solutions (id, case_id, student_id, text_content, file_path, file_name, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [solutionId, case_id, studentProfile.id, text_content, filePath, fileName, 'new']
+    );
+
+    await logAction(session.user_id, 'student', 'submit_solution', 'case', case_id);
+
+    const solution = await get('SELECT * FROM solutions WHERE id = ?', [solutionId]);
+    res.status(201).json(solution);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get student solutions
+app.get('/api/student/solutions', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'student']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const studentProfile = await get('SELECT id FROM student_profiles WHERE user_id = ?', [session.user_id]);
+    const solutions = await all(
+      `SELECT s.*, c.title as case_title, cp.name as company_name
+       FROM solutions s
+       JOIN cases c ON s.case_id = c.id
+       JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+       WHERE s.student_id = ?
+       ORDER BY s.created_at DESC`,
+      [studentProfile?.id]
+    );
+
+    res.json(solutions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get company solutions
+app.get('/api/company/solutions', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'company']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const companyProfile = await get('SELECT id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+
+    const solutions = await all(
+      `SELECT s.*, c.title as case_title, sp.first_name, sp.last_name, u.email, sp.university
+       FROM solutions s
+       JOIN cases c ON s.case_id = c.id
+       JOIN student_profiles sp ON s.student_id = sp.id
+       JOIN users u ON sp.user_id = u.id
+       WHERE c.company_id = ?
+       ORDER BY s.created_at DESC`,
+      [companyProfile.id]
+    );
+
+    res.json(solutions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get solutions by case
+app.get('/api/cases/:caseId/solutions', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'company']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const companyProfile = await get('SELECT id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    const caseItem = await get('SELECT company_id FROM cases WHERE id = ?', [req.params.caseId]);
+    if (!caseItem) {
+      return res.status(404).json({ error: 'Кейс не найден' });
+    }
+
+    if (caseItem.company_id !== companyProfile.id) {
+      return res.status(403).json({ error: 'Нет доступа' });
+    }
+
+    const solutions = await all(
+      `SELECT s.*, sp.first_name, sp.last_name, u.email, sp.university
+       FROM solutions s
+       JOIN student_profiles sp ON s.student_id = sp.id
+       JOIN users u ON sp.user_id = u.id
+       WHERE s.case_id = ?
+       ORDER BY s.created_at DESC`,
+      [req.params.caseId]
+    );
+
+    res.json(solutions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update solution status
+app.put('/api/solutions/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const { status } = req.body;
@@ -469,50 +636,38 @@ app.put('/api/applications/:id', async (req, res) => {
     if (!token || !status) {
       return res.status(400).json({ error: 'Заполните обязательные поля' });
     }
+    if (!['new', 'viewed', 'invited', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Некорректный статус решения' });
+    }
 
     const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'company']);
     if (!session) {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const application = await get('SELECT * FROM applications WHERE id = ?', [req.params.id]);
-    if (!application) {
-      return res.status(404).json({ error: 'Заявка не найдена' });
+    const solution = await get('SELECT * FROM solutions WHERE id = ?', [req.params.id]);
+    if (!solution) {
+      return res.status(404).json({ error: 'Решение не найдено' });
     }
 
-    const event = await get('SELECT company_id FROM events WHERE id = ?', [application.event_id]);
-    if (event.company_id !== session.user_id) {
+    const caseItem = await get('SELECT company_id FROM cases WHERE id = ?', [solution.case_id]);
+    const companyProfile = await get('SELECT id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+
+    if (caseItem.company_id !== companyProfile.id) {
       return res.status(403).json({ error: 'Нет доступа' });
     }
 
-    await run('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
-
-    await logAction(session.user_id, 'company', 'update_application', 'application', req.params.id, { status });
-
-    const updated = await get('SELECT * FROM applications WHERE id = ?', [req.params.id]);
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============= COMPANY PROFILE =============
-
-app.get('/api/company/:id', async (req, res) => {
-  try {
-    const company = await get(
-      'SELECT id, name, description, city, website, logo_path, status FROM companies WHERE id = ? AND status = ?',
-      [req.params.id, 'active']
+    await run('UPDATE solutions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    const studentOwner = await get('SELECT user_id FROM student_profiles WHERE id = ?', [solution.student_id]);
+    await run(
+      'INSERT INTO notifications (id, user_id, text, link_type, link_id) VALUES (?, ?, ?, ?, ?)',
+      [uuidv4(), studentOwner?.user_id, `Статус вашего решения обновлен: ${status}`, 'solution', solution.id]
     );
 
-    if (!company) {
-      return res.status(404).json({ error: 'Компания не найдена' });
-    }
+    await logAction(session.user_id, 'company', 'update_solution', 'solution', req.params.id, { status });
 
-    const media = await all('SELECT * FROM company_media WHERE company_id = ? ORDER BY position', [req.params.id]);
-    const events = await all('SELECT * FROM events WHERE company_id = ? AND status = ?', [req.params.id, 'active']);
-
-    res.json({ company, media, events });
+    const updated = await get('SELECT * FROM solutions WHERE id = ?', [req.params.id]);
+    res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -533,14 +688,14 @@ app.get('/api/company/dashboard', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const company = await get('SELECT * FROM companies WHERE id = ?', [session.user_id]);
-    const events = await all('SELECT * FROM events WHERE company_id = ? ORDER BY created_at DESC', [session.user_id]);
-    const applicationCount = await get(
-      'SELECT COUNT(*) as count FROM applications a JOIN events e ON a.event_id = e.id WHERE e.company_id = ?',
-      [session.user_id]
+    const company = await get('SELECT * FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    const cases = await all('SELECT * FROM cases WHERE company_id = ? OR company_id = ? ORDER BY created_at DESC', [company.id, company.user_id]);
+    const solutionCount = await get(
+      'SELECT COUNT(*) as count FROM solutions s JOIN cases c ON s.case_id = c.id WHERE c.company_id = ? OR c.company_id = ?',
+      [company.id, company.user_id]
     );
 
-    res.json({ company, events, applicationCount: applicationCount.count });
+    res.json({ company, cases, solutionCount: solutionCount.count });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -561,93 +716,214 @@ app.get('/api/student/dashboard', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const student = await get('SELECT * FROM students WHERE id = ?', [session.user_id]);
-    const applications = await all(
-      `SELECT a.*, e.title, e.type, c.name as company_name
-       FROM applications a
-       JOIN events e ON a.event_id = e.id
-       JOIN companies c ON e.company_id = c.id
-       WHERE a.student_id = ?
-       ORDER BY a.created_at DESC`,
-      [session.user_id]
+    const student = await get('SELECT * FROM student_profiles WHERE user_id = ?', [session.user_id]);
+    const solutions = await all(
+      `SELECT s.*, c.title as case_title, cp.name as company_name
+       FROM solutions s
+       JOIN cases c ON s.case_id = c.id
+       JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+       WHERE s.student_id = ?
+       ORDER BY s.created_at DESC`,
+      [student.id]
     );
 
-    res.json({ student, applications });
+    res.json({ student, solutions });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============= AUTH ROUTES =============
 
-app.post('/api/auth/admin/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
-    }
-
-    const admin = await get('SELECT * FROM admins WHERE email = ?', [email]);
-    if (!admin) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
-    }
-
-    const passwordMatch = await comparePasswords(password, admin.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ error: 'Неверные учетные данные' });
-    }
-
-    const token = generateToken(admin.id);
-    await createSession(admin.id, 'admin', token);
-    await logAction(admin.id, 'admin', 'login');
-
-    const { password: _, ...adminWithoutPassword } = admin;
-    res.json({ user: adminWithoutPassword, token });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // ============= ADMIN ROUTES =============
 
-app.post('/api/admin/login', async (req, res) => {
-  console.log('Admin login attempt with body:', req.body);
+app.get('/api/admin/companies', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const token = req.headers.authorization?.replace('Bearer ', '');
 
-    if (!email || !password) {
-      console.log('Missing email or password');
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
     }
 
-    console.log('Looking up admin with email:', email);
-    const admin = await get('SELECT * FROM admins WHERE email = ?', [email]);
-    if (!admin) {
-      console.log('Admin not found for email:', email);
-      return res.status(401).json({ error: 'Неверные учетные данные' });
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
     }
-    console.log('Admin found:', { id: admin.id, email: admin.email });
 
-    console.log('Verifying password...');
-    const passwordMatch = await comparePasswords(password, admin.password);
-    if (!passwordMatch) {
-      console.log('Password mismatch for admin:', admin.id);
-      return res.status(401).json({ error: 'Неверные учетные данные' });
+    const companies = await all('SELECT cp.*, u.email FROM company_profiles cp JOIN users u ON cp.user_id = u.id ORDER BY cp.created_at DESC');
+    res.json(companies);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/companies/:id/status', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { status } = req.body;
+
+    if (!token || !status) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
     }
-    console.log('Password verified successfully');
 
-    const token = generateToken(admin.id);
-    console.log('Generated token:', token);
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
 
-    await createSession(admin.id, 'admin', token);
-    console.log('Session created for admin:', admin.id);
+    await run('UPDATE company_profiles SET moderation_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    await logAction(session.user_id, 'admin', 'update_company_status', 'company', req.params.id, { status });
 
-    await logAction(admin.id, 'admin', 'login');
-    console.log('Login action logged');
+    const company = await get('SELECT * FROM company_profiles WHERE id = ?', [req.params.id]);
+    res.json(company);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    res.json({ admin: { id: admin.id, email: admin.email, name: admin.name }, token });
-    console.log('Admin login successful:', { id: admin.id, email: admin.email, name: admin.name });
+app.get('/api/admin/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const students = await all('SELECT sp.*, u.email FROM student_profiles sp JOIN users u ON sp.user_id = u.id ORDER BY sp.created_at DESC');
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/students/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('DELETE FROM solutions WHERE student_id = ?', [req.params.id]);
+    await run('DELETE FROM student_profiles WHERE id = ?', [req.params.id]);
+    await run('DELETE FROM sessions WHERE user_id = ? AND user_type = ?', [req.params.id, 'student']);
+    await run('DELETE FROM users WHERE id = ?', [req.params.id]);
+    await logAction(session.user_id, 'admin', 'delete_student', 'student', req.params.id);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/cases', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const cases = await all(`
+      SELECT c.*, cp.name as company_name
+      FROM cases c
+      JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+      ORDER BY c.created_at DESC
+    `);
+    res.json(cases);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/cases/:id/status', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { status } = req.body;
+
+    if (!token || !status) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('UPDATE cases SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    await logAction(session.user_id, 'admin', 'update_case_status', 'case', req.params.id, { status });
+
+    const caseItem = await get('SELECT * FROM cases WHERE id = ?', [req.params.id]);
+    res.json(caseItem);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/cases/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('DELETE FROM solutions WHERE case_id = ?', [req.params.id]);
+    await run('DELETE FROM cases WHERE id = ?', [req.params.id]);
+    await logAction(session.user_id, 'admin', 'delete_case', 'case', req.params.id);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/solutions', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const solutions = await all(`
+      SELECT s.*,
+             sp.first_name, sp.last_name, u.email, sp.university,
+             c.title as case_title,
+             cp.name as company_name
+      FROM solutions s
+      JOIN student_profiles sp ON s.student_id = sp.id
+      JOIN users u ON sp.user_id = u.id
+      JOIN cases c ON s.case_id = c.id
+      JOIN company_profiles cp ON (c.company_id = cp.id OR c.company_id = cp.user_id)
+      ORDER BY s.created_at DESC
+    `);
+    res.json(solutions);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -666,7 +942,9 @@ app.get('/api/admin/companies', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const companies = await all('SELECT * FROM companies ORDER BY created_at DESC');
+    const companies = await all(
+      'SELECT cp.*, u.email FROM company_profiles cp JOIN users u ON cp.user_id = u.id ORDER BY cp.created_at DESC'
+    );
     res.json(companies);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -687,10 +965,13 @@ app.put('/api/admin/company/:id/status', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    await run('UPDATE companies SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    await run(
+      'UPDATE company_profiles SET moderation_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [status, req.params.id]
+    );
     await logAction(session.user_id, 'admin', 'update_company_status', 'company', req.params.id, { status });
 
-    const company = await get('SELECT * FROM companies WHERE id = ?', [req.params.id]);
+    const company = await get('SELECT * FROM company_profiles WHERE id = ?', [req.params.id]);
     res.json(company);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -711,14 +992,72 @@ app.get('/api/admin/stats', async (req, res) => {
     }
 
     const stats = {
-      students: await get('SELECT COUNT(*) as count FROM students'),
-      companies: await get('SELECT COUNT(*) as count FROM companies WHERE status = ?', ['active']),
-      events: await get('SELECT COUNT(*) as count FROM events WHERE status = ?', ['active']),
-      applications: await get('SELECT COUNT(*) as count FROM applications'),
-      pendingCompanies: await get('SELECT COUNT(*) as count FROM companies WHERE status = ?', ['pending']),
+      students: await get('SELECT COUNT(*) as count FROM student_profiles'),
+      companies: await get('SELECT COUNT(*) as count FROM company_profiles WHERE moderation_status = ?', ['active']),
+      cases: await get('SELECT COUNT(*) as count FROM cases WHERE status = ?', ['active']),
+      solutions: await get('SELECT COUNT(*) as count FROM solutions'),
+      pendingCompanies: await get('SELECT COUNT(*) as count FROM company_profiles WHERE moderation_status = ?', ['moderation']),
     };
 
     res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= NOTIFICATIONS =============
+
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ?', [token]);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const notifications = await all(
+      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC',
+      [session.user_id]
+    );
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    const session = await get('SELECT user_id FROM sessions WHERE token = ?', [token]);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    await run('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', [req.params.id, session.user_id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/notifications/read-all', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    const session = await get('SELECT user_id FROM sessions WHERE token = ?', [token]);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+    await run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [session.user_id]);
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -744,181 +1083,7 @@ app.get('/api/admin/logs', async (req, res) => {
   }
 });
 
-// ============= ADMIN STUDENTS =============
 
-app.get('/api/admin/students', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const students = await all('SELECT id, email, full_name, university, course, city, created_at FROM students ORDER BY created_at DESC');
-    res.json(students);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/admin/students/:id', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    await run('DELETE FROM applications WHERE student_id = ?', [req.params.id]);
-    await run('DELETE FROM sessions WHERE user_id = ? AND user_type = ?', [req.params.id, 'student']);
-    await run('DELETE FROM students WHERE id = ?', [req.params.id]);
-    await logAction(session.user_id, 'admin', 'delete_student', 'student', req.params.id);
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============= ADMIN EVENTS =============
-
-app.get('/api/admin/events', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const events = await all(`
-      SELECT e.*, c.name as company_name
-      FROM events e
-      JOIN companies c ON e.company_id = c.id
-      ORDER BY e.created_at DESC
-    `);
-    res.json(events);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/admin/events/:id/status', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const { status } = req.body;
-
-    if (!token || !status) {
-      return res.status(400).json({ error: 'Заполните обязательные поля' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    await run('UPDATE events SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
-    await logAction(session.user_id, 'admin', 'update_event_status', 'event', req.params.id, { status });
-
-    const event = await get('SELECT * FROM events WHERE id = ?', [req.params.id]);
-    res.json(event);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/admin/events/:id', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    await run('DELETE FROM applications WHERE event_id = ?', [req.params.id]);
-    await run('DELETE FROM events WHERE id = ?', [req.params.id]);
-    await logAction(session.user_id, 'admin', 'delete_event', 'event', req.params.id);
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============= ADMIN APPLICATIONS =============
-
-app.get('/api/admin/applications', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    const applications = await all(`
-      SELECT a.*, 
-             s.full_name as student_name, s.email as student_email, s.university,
-             e.title as event_title,
-             c.name as company_name
-      FROM applications a
-      JOIN students s ON a.student_id = s.id
-      JOIN events e ON a.event_id = e.id
-      JOIN companies c ON e.company_id = c.id
-      ORDER BY a.created_at DESC
-    `);
-    res.json(applications);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/admin/applications/:id/status', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const { status } = req.body;
-
-    if (!token || !status) {
-      return res.status(400).json({ error: 'Заполните обязательные поля' });
-    }
-
-    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
-    if (!session) {
-      return res.status(401).json({ error: 'Not authorized' });
-    }
-
-    await run('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
-    await logAction(session.user_id, 'admin', 'update_application_status', 'application', req.params.id, { status });
-
-    const application = await get('SELECT * FROM applications WHERE id = ?', [req.params.id]);
-    res.json(application);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // ============= ADMIN ADMINS =============
 
@@ -935,7 +1100,12 @@ app.get('/api/admin/admins', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const admins = await all('SELECT id, email, name, created_at FROM admins ORDER BY created_at DESC');
+    const admins = await all(
+      `SELECT ap.id, ap.name, u.email, ap.created_at
+       FROM admin_profiles ap
+       JOIN users u ON ap.user_id = u.id
+       ORDER BY ap.created_at DESC`
+    );
     res.json(admins);
   } catch (error) {
     res.status(500).json({ error: error.message });

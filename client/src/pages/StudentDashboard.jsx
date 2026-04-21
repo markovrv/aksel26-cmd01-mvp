@@ -1,24 +1,24 @@
 import { useState, useEffect } from 'react';
-import { applicationsAPI, studentAPI } from '../api';
+import { solutionsAPI, studentAPI } from '../api';
 import './Dashboard.css';
 
 function StudentDashboard({ user }) {
-  const [applications, setApplications] = useState([]);
+  const [solutions, setSolutions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchApplications = async () => {
+    const fetchSolutions = async () => {
       try {
-        const response = await applicationsAPI.getStudentApplications();
-        setApplications(response.data);
+        const response = await solutionsAPI.getMy();
+        setSolutions(response.data);
       } catch (error) {
-        console.error('Error loading applications:', error);
+        console.error('Error loading solutions:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchApplications();
+    fetchSolutions();
   }, []);
 
   if (loading) return <div className="container">Загрузка...</div>;
@@ -34,7 +34,7 @@ function StudentDashboard({ user }) {
           <h2>Мой профиль</h2>
           <div className="profile-info">
             <p>
-              <strong>ФИО:</strong> {user.full_name}
+              <strong>ФИО:</strong> {user.first_name} {user.last_name}
             </p>
             <p>
               <strong>Email:</strong> {user.email}
@@ -49,47 +49,55 @@ function StudentDashboard({ user }) {
                 <strong>Курс:</strong> {user.course}
               </p>
             )}
+            {user.specialization && (
+              <p>
+                <strong>Специализация:</strong> {user.specialization}
+              </p>
+            )}
             {user.city && (
               <p>
                 <strong>Город:</strong> {user.city}
+              </p>
+            )}
+            {user.phone && (
+              <p>
+                <strong>Телефон:</strong> {user.phone}
               </p>
             )}
           </div>
         </div>
 
         <div className="applications-section">
-          <h2>Мои заявки ({applications.length})</h2>
+          <h2>Мои решения ({solutions.length})</h2>
 
-          {applications.length === 0 ? (
+          {solutions.length === 0 ? (
             <div className="empty-state">
-              <p>Вы еще не отправили ни одной заявки</p>
+              <p>Вы еще не отправили ни одного решения</p>
             </div>
           ) : (
             <div className="applications-table">
               <table>
                 <thead>
                   <tr>
-                    <th>Мероприятие</th>
-                    <th>Тип</th>
+                    <th>Кейс</th>
                     <th>Компания</th>
                     <th>Статус</th>
                     <th>Дата отправки</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {applications.map((app) => (
-                    <tr key={app.id}>
+                  {solutions.map((solution) => (
+                    <tr key={solution.id}>
                       <td>
-                        <strong>{app.title}</strong>
+                        <strong>{solution.case_title}</strong>
                       </td>
-                      <td>{getEventTypeLabel(app.type)}</td>
-                      <td>{app.company_name}</td>
+                      <td>{solution.company_name}</td>
                       <td>
-                        <span className={`status-badge status-${app.status}`}>
-                          {getStatusLabel(app.status)}
+                        <span className={`status-badge status-${solution.status}`}>
+                          {getStatusLabel(solution.status)}
                         </span>
                       </td>
-                      <td>{new Date(app.created_at).toLocaleDateString('ru-RU')}</td>
+                      <td>{new Date(solution.created_at).toLocaleDateString('ru-RU')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -102,14 +110,7 @@ function StudentDashboard({ user }) {
   );
 }
 
-function getEventTypeLabel(type) {
-  const labels = {
-    case: '📋 Кейс',
-    internship: '🎓 Стажировка',
-    tour: '👁️ Экскурсия',
-  };
-  return labels[type] || type;
-}
+
 
 function getStatusLabel(status) {
   const labels = {

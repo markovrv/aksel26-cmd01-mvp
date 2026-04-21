@@ -11,7 +11,7 @@ Your Industrial Tourism Platform MVP is running and ready to use!
 
 Open your browser and navigate to:
 ```
-https://5173-3dba6d8b-400a-4c52-b98a-1616f70d3280.preview.promto.ai
+http://localhost:5173
 ```
 
 ## 👤 Step 1: Create Your First Account

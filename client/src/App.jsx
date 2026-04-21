@@ -9,7 +9,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import CompanyDashboard from './pages/CompanyDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import CompanyProfile from './pages/CompanyProfile';
-import EventDetail from './pages/EventDetail';
+import CaseDetail from './pages/CaseDetail';
 import './App.css';
 
 function App() {
@@ -83,7 +83,7 @@ function App() {
             <>
               <Route path="/" element={<HomePage user={user} userType={userType} />} />
               <Route path="/company/:id" element={<CompanyProfile />} />
-              <Route path="/event/:id" element={<EventDetail user={user} userType={userType} />} />
+              <Route path="/case/:id" element={<CaseDetail user={user} userType={userType} />} />
               {userType === 'student' && <Route path="/dashboard" element={<StudentDashboard user={user} />} />}
               {userType === 'company' && <Route path="/dashboard" element={<CompanyDashboard user={user} />} />}
               <Route path="/admin" element={userType === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />

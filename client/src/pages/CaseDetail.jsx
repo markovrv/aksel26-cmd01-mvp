@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { casesAPI, solutionsAPI } from '../api';
 import './CaseDetail.css';
 
-function CaseDetail({ user }) {
+function CaseDetail({ userType }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [caseData, setCaseData] = useState(null);
@@ -19,10 +19,10 @@ function CaseDetail({ user }) {
   useEffect(() => {
     const fetchCase = async () => {
       try {
-        const response = await casesAPI.getCaseById(id);
+        const response = await casesAPI.getById(id);
         setCaseData(response.data);
       } catch (err) {
-        setError('Failed to load case');
+        setError('Не удалось загрузить кейс');
       } finally {
         setLoading(false);
       }
@@ -60,7 +60,7 @@ function CaseDetail({ user }) {
       setFormData({ text_content: '', file: null });
 
       setTimeout(() => {
-        if (user.role === 'student') {
+        if (userType === 'student') {
           navigate('/dashboard');
         }
       }, 2000);
@@ -71,56 +71,56 @@ function CaseDetail({ user }) {
     }
   };
 
-  if (loading) return <div className="container">Loading...</div>;
-  if (!caseData) return <div className="container">Case not found</div>;
+  if (loading) return <div className="container">Загрузка...</div>;
+  if (!caseData) return <div className="container">Кейс не найден</div>;
 
-  const isExpired = new Date(caseData.deadline) < new Date();
+  const isExpired = new Date(caseData.application_deadline) < new Date();
 
   return (
     <div className="container">
-      <button onClick={() => navigate('/cases')} className="btn btn-secondary" style={{ marginBottom: '20px' }}>
-        ← Back to Cases
+      <button onClick={() => navigate('/')} className="btn btn-secondary" style={{ marginBottom: '20px' }}>
+        ← На главную
       </button>
 
       <div className="case-detail">
         <div className="case-detail-header">
           <div>
             <h1>{caseData.title}</h1>
-            <p className="company-info">From: <strong>{caseData.company_name}</strong></p>
+            <p className="company-info">Компания: <strong>{caseData.company_name}</strong></p>
           </div>
           <div className="case-status-badge" style={{ backgroundColor: isExpired ? '#dc3545' : '#28a745' }}>
-            {isExpired ? 'Expired' : 'Active'}
+            {isExpired ? 'Дедлайн истек' : 'Активен'}
           </div>
         </div>
 
         <div className="case-info-grid">
           <div className="info-item">
-            <span className="label">Deadline:</span>
-            <span className="value">{new Date(caseData.deadline).toLocaleDateString()}</span>
+            <span className="label">Дедлайн:</span>
+            <span className="value">{new Date(caseData.application_deadline).toLocaleDateString('ru-RU')}</span>
           </div>
           <div className="info-item">
-            <span className="label">Status:</span>
+            <span className="label">Статус:</span>
             <span className="value">{caseData.status}</span>
           </div>
         </div>
 
         <div className="case-section">
-          <h2>📝 Description</h2>
+          <h2>📝 Описание</h2>
           <p>{caseData.description}</p>
         </div>
 
         <div className="case-section">
-          <h2>📋 Requirements</h2>
+          <h2>📋 Требования</h2>
           <p>{caseData.requirements}</p>
         </div>
 
-        {user.role === 'student' && !isExpired && (
+        {userType === 'student' && !isExpired && (
           <div className="case-section solution-form">
-            <h2>✍️ Submit Your Solution</h2>
+            <h2>✍️ Отправить решение</h2>
 
             {submitted && (
               <div className="alert alert-success">
-                ✅ Solution submitted successfully! Redirecting to dashboard...
+                ✅ Решение отправлено. Переходим в личный кабинет...
               </div>
             )}
 
@@ -128,35 +128,36 @@ function CaseDetail({ user }) {
 
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label>Solution Text (Optional)</label>
+                <label>Текст решения</label>
                 <textarea
                   name="text_content"
                   value={formData.text_content}
                   onChange={handleChange}
-                  placeholder="Describe your solution..."
+                  placeholder="Опишите ваше решение"
+                  required
                 ></textarea>
               </div>
 
               <div className="form-group">
-                <label>Upload File (Optional)</label>
-                <input type="file" onChange={handleFileChange} />
-                {formData.file && <p className="file-name">Selected: {formData.file.name}</p>}
+                <label>Файл решения (PDF/DOCX/ZIP, до 10 МБ)</label>
+                <input type="file" onChange={handleFileChange} accept=".pdf,.doc,.docx,.zip" />
+                {formData.file && <p className="file-name">Выбран файл: {formData.file.name}</p>}
               </div>
 
               <button
                 type="submit"
                 className="btn btn-success"
-                disabled={submitting || (!formData.text_content && !formData.file)}
+                disabled={submitting || !formData.text_content}
               >
-                {submitting ? 'Submitting...' : 'Submit Solution'}
+                {submitting ? 'Отправка...' : 'Отправить'}
               </button>
             </form>
           </div>
         )}
 
-        {isExpired && user.role === 'student' && (
+        {isExpired && userType === 'student' && (
           <div className="alert alert-error">
-            This case deadline has passed and is no longer accepting submissions.
+            Срок подачи решений по этому кейсу уже истек.
           </div>
         )}
       </div>

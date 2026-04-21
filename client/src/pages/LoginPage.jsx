@@ -17,18 +17,8 @@ function LoginPage({ onLogin }) {
     setLoading(true);
 
     try {
-      let response;
-      let userData;
-      if (userType === 'student') {
-        response = await authAPI.loginStudent(email, password);
-        userData = response.data.student;
-      } else if (userType === 'company') {
-        response = await authAPI.loginCompany(email, password);
-        userData = response.data.company;
-      } else {
-        response = await authAPI.adminLogin(email, password);
-        userData = response.data.user;
-      }
+      const response = await authAPI.login(email, password, userType);
+      const userData = response.data.user;
 
       onLogin(userData, response.data.token, userType);
       navigate(userType === 'admin' ? '/admin' : '/');

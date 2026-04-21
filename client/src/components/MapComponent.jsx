@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './MapComponent.css';
@@ -11,21 +12,54 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-function MapComponent({ events, onEventClick }) {
+function MapFocusPopup({ focus, companies, markerRefs }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!focus?.id) return;
+    const company = companies.find((c) => c.id === focus.id);
+    if (!company?.latitude || !company?.longitude) return;
+
+    const lat = parseFloat(company.latitude);
+    const lng = parseFloat(company.longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+
+    const marker = markerRefs.current[focus.id];
+    const targetZoom = Math.max(map.getZoom(), 14);
+    map.flyTo([lat, lng], targetZoom, { duration: 0.45 });
+
+    const t = setTimeout(() => {
+      if (marker && typeof marker.openPopup === 'function') {
+        marker.openPopup();
+      }
+    }, 480);
+    return () => clearTimeout(t);
+  }, [focus?.id, focus?.nonce, companies, map, markerRefs]);
+
+  return null;
+}
+
+function MapComponent({ companies, onCompanyClick, focus }) {
+  const markerRefs = useRef({});
   // Киров координаты
   const kirovCoords = [58.596, 49.6199];
 
-  // Create custom markers for different event types
-  const getMarkerIcon = (type) => {
-    const colors = {
-      case: '#007bff',
-      internship: '#28a745',
-      tour: '#fd7e14',
-    };
+  // Create custom markers for companies with cases
+  const getMarkerIcon = (activeCasesCount, hasStudentSolution) => {
+    let color = '#6c757d'; // серый по умолчанию
+    let emoji = '🏭';
+
+    if (hasStudentSolution) {
+      color = '#28a745'; // зеленый - студент отправил решение
+      emoji = '✅';
+    } else if (activeCasesCount > 0) {
+      color = '#007bff'; // синий - есть активные кейсы
+      emoji = '📋';
+    }
 
     return L.divIcon({
-      html: `<div style="background-color: ${colors[type] || '#6c757d'}; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
-        ${type === 'case' ? '📋' : type === 'internship' ? '🎓' : '👁️'}
+      html: `<div style="background-color: ${color}; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+        ${emoji}
       </div>`,
       iconSize: [30, 30],
       className: 'custom-marker',
@@ -45,33 +79,32 @@ function MapComponent({ events, onEventClick }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {events.map((event) => (
+        <MapFocusPopup focus={focus} companies={companies} markerRefs={markerRefs} />
+
+        {companies.map((company) => (
           <Marker
-            key={event.id}
-            position={[58.596, 49.6199 + Math.random() * 0.1 - 0.05]}
-            icon={getMarkerIcon(event.type)}
+            key={company.id}
+            ref={(instance) => {
+              if (instance) {
+                markerRefs.current[company.id] = instance;
+              } else {
+                delete markerRefs.current[company.id];
+              }
+            }}
+            position={[parseFloat(company.latitude), parseFloat(company.longitude)]}
+            icon={getMarkerIcon(company.active_cases_count, company.has_student_solution)}
           >
             <Popup>
               <div className="popup-content">
-                <h4>{event.title}</h4>
-                <p><strong>{event.company_name}</strong></p>
-                <p>
-                  {event.type === 'case'
-                    ? '📋 Кейс'
-                    : event.type === 'internship'
-                    ? '🎓 Стажировка'
-                    : '👁️ Экскурсия'}
-                </p>
-                <p>
-                  <small>
-                    {new Date(event.application_deadline).toLocaleDateString('ru-RU')}
-                  </small>
-                </p>
+                <h4>{company.name}</h4>
+                <p><strong>{company.city}</strong></p>
+                <p>{company.short_description}</p>
+                <p>📋 Активных кейсов: {company.active_cases_count}</p>
                 <button
-                  onClick={() => onEventClick(event.id)}
+                  onClick={() => onCompanyClick(company.id)}
                   className="btn btn-primary btn-small"
                 >
-                  Подробнее
+                  Посмотреть кейсы
                 </button>
               </div>
             </Popup>

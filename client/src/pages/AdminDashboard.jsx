@@ -7,8 +7,8 @@ function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [students, setStudents] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [applications, setApplications] = useState([]);
+  const [cases, setCases] = useState([]);
+  const [solutions, setSolutions] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,25 +32,32 @@ function AdminDashboard() {
   }, []);
 
   const fetchAllData = async () => {
-    try {
-      const [companiesRes, studentsRes, eventsRes, applicationsRes, adminsRes, logsRes] = await Promise.all([
-        adminAPI.getCompanies(),
-        adminAPI.getStudents(),
-        adminAPI.getEvents(),
-        adminAPI.getApplications(),
-        adminAPI.getAdmins(),
-        adminAPI.getLogs(),
-      ]);
+    const [companiesRes, studentsRes, casesRes, solutionsRes, adminsRes, logsRes] = await Promise.allSettled([
+      adminAPI.getCompanies(),
+      adminAPI.getStudents(),
+      adminAPI.getCases(),
+      adminAPI.getSolutions(),
+      adminAPI.getAdmins(),
+      adminAPI.getLogs(),
+    ]);
 
-      setCompanies(companiesRes.data);
-      setStudents(studentsRes.data);
-      setEvents(eventsRes.data);
-      setApplications(applicationsRes.data);
-      setAdmins(adminsRes.data);
-      setLogs(logsRes.data);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
+    if (companiesRes.status === 'fulfilled') setCompanies(companiesRes.value.data || []);
+    else console.error('Error loading companies:', companiesRes.reason);
+
+    if (studentsRes.status === 'fulfilled') setStudents(studentsRes.value.data || []);
+    else console.error('Error loading students:', studentsRes.reason);
+
+    if (casesRes.status === 'fulfilled') setCases(casesRes.value.data || []);
+    else console.error('Error loading cases:', casesRes.reason);
+
+    if (solutionsRes.status === 'fulfilled') setSolutions(solutionsRes.value.data || []);
+    else console.error('Error loading solutions:', solutionsRes.reason);
+
+    if (adminsRes.status === 'fulfilled') setAdmins(adminsRes.value.data || []);
+    else console.error('Error loading admins:', adminsRes.reason);
+
+    if (logsRes.status === 'fulfilled') setLogs(logsRes.value.data || []);
+    else console.error('Error loading logs:', logsRes.reason);
   };
 
   useEffect(() => {
@@ -63,7 +70,7 @@ function AdminDashboard() {
     try {
       await adminAPI.updateCompanyStatus(companyId, newStatus);
       setCompanies(companies.map((c) =>
-        c.id === companyId ? { ...c, status: newStatus } : c
+        c.id === companyId ? { ...c, moderation_status: newStatus } : c
       ));
     } catch (error) {
       console.error('Error updating company status:', error);
@@ -80,35 +87,35 @@ function AdminDashboard() {
     }
   };
 
-  const handleEventStatus = async (eventId, newStatus) => {
+  const handleCaseStatus = async (caseId, newStatus) => {
     try {
-      await adminAPI.updateEventStatus(eventId, newStatus);
-      setEvents(events.map((e) =>
-        e.id === eventId ? { ...e, status: newStatus } : e
+      await adminAPI.updateCaseStatus(caseId, newStatus);
+      setCases(cases.map((c) =>
+        c.id === caseId ? { ...c, status: newStatus } : c
       ));
     } catch (error) {
-      console.error('Error updating event status:', error);
+      console.error('Error updating case status:', error);
     }
   };
 
-  const handleDeleteEvent = async (eventId) => {
-    if (!confirm('Вы уверены, что хотите удалить это мероприятие?')) return;
+  const handleDeleteCase = async (caseId) => {
+    if (!confirm('Вы уверены, что хотите удалить этот кейс?')) return;
     try {
-      await adminAPI.deleteEvent(eventId);
-      setEvents(events.filter((e) => e.id !== eventId));
+      await adminAPI.deleteCase(caseId);
+      setCases(cases.filter((c) => c.id !== caseId));
     } catch (error) {
-      console.error('Error deleting event:', error);
+      console.error('Error deleting case:', error);
     }
   };
 
-  const handleApplicationStatus = async (applicationId, newStatus) => {
+  const handleSolutionStatus = async (solutionId, newStatus) => {
     try {
-      await adminAPI.updateApplicationStatus(applicationId, newStatus);
-      setApplications(applications.map((a) =>
-        a.id === applicationId ? { ...a, status: newStatus } : a
+      await adminAPI.updateSolutionStatus(solutionId, newStatus);
+      setSolutions(solutions.map((s) =>
+        s.id === solutionId ? { ...s, status: newStatus } : s
       ));
     } catch (error) {
-      console.error('Error updating application status:', error);
+      console.error('Error updating solution status:', error);
     }
   };
 
@@ -141,14 +148,14 @@ function AdminDashboard() {
             👤 Студенты
           </button>
           <button
-            className={`tab-btn ${activeTab === 'events' ? 'active' : ''}`}
-            onClick={() => setActiveTab('events')}
+            className={`tab-btn ${activeTab === 'cases' ? 'active' : ''}`}
+            onClick={() => setActiveTab('cases')}
           >
-            📅 Мероприятия
+            📋 Кейсы
           </button>
           <button
-            className={`tab-btn ${activeTab === 'applications' ? 'active' : ''}`}
-            onClick={() => setActiveTab('applications')}
+            className={`tab-btn ${activeTab === 'solutions' ? 'active' : ''}`}
+            onClick={() => setActiveTab('solutions')}
           >
             📝 Заявки
           </button>
@@ -179,16 +186,16 @@ function AdminDashboard() {
                 <p className="stat-number">{stats.companies.count}</p>
               </div>
               <div className="stat-card">
-                <h3>На модерации</h3>
+                <h3>Компании на модерации</h3>
                 <p className="stat-number">{stats.pendingCompanies.count}</p>
               </div>
               <div className="stat-card">
-                <h3>Мероприятия</h3>
-                <p className="stat-number">{stats.events.count}</p>
+                <h3>Активные кейсы</h3>
+                <p className="stat-number">{stats.cases.count}</p>
               </div>
               <div className="stat-card">
-                <h3>Заявки</h3>
-                <p className="stat-number">{stats.applications.count}</p>
+                <h3>Решения</h3>
+                <p className="stat-number">{stats.solutions.count}</p>
               </div>
             </div>
           </div>
@@ -220,12 +227,12 @@ function AdminDashboard() {
                         <td>{company.email}</td>
                         <td>{company.city}</td>
                         <td>
-                          <span className={`status-badge status-${company.status}`}>
-                            {getStatusLabel(company.status)}
+                          <span className={`status-badge status-${company.moderation_status}`}>
+                            {getStatusLabel(company.moderation_status)}
                           </span>
                         </td>
                         <td>
-                          {company.status === 'pending' && (
+                          {company.moderation_status === 'moderation' && (
                             <>
                               <button
                                 onClick={() =>
@@ -245,14 +252,14 @@ function AdminDashboard() {
                               </button>
                             </>
                           )}
-                          {company.status === 'active' && (
+                          {company.moderation_status === 'active' && (
                             <button
                               onClick={() =>
-                                handleCompanyStatus(company.id, 'blocked')
+                                handleCompanyStatus(company.id, 'rejected')
                               }
                               className="btn-small btn-danger"
                             >
-                              🚫 Заблокировать
+                              ✕ Отклонить
                             </button>
                           )}
                         </td>
@@ -288,7 +295,7 @@ function AdminDashboard() {
                     {students.map((student) => (
                       <tr key={student.id}>
                         <td>
-                          <strong>{student.full_name}</strong>
+                          <strong>{student.first_name} {student.last_name}</strong>
                         </td>
                         <td>{student.email}</td>
                         <td>{student.university || '-'}</td>
@@ -316,11 +323,11 @@ function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'events' && (
+        {activeTab === 'cases' && (
           <div className="events-section">
-            <h2>Управление мероприятиями</h2>
-            {events.length === 0 ? (
-              <p>Мероприятий не найдено</p>
+            <h2>Управление кейсами</h2>
+            {cases.length === 0 ? (
+              <p>Кейсов не найдено</p>
             ) : (
               <div className="companies-table">
                 <table>
@@ -328,49 +335,45 @@ function AdminDashboard() {
                     <tr>
                       <th>Название</th>
                       <th>Компания</th>
-                      <th>Тип</th>
-                      <th>Дата</th>
+                      <th>Дедлайн</th>
                       <th>Статус</th>
                       <th>Действие</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((event) => (
-                      <tr key={event.id}>
+                    {cases.map((caseItem) => (
+                      <tr key={caseItem.id}>
                         <td>
-                          <strong>{event.title}</strong>
+                          <strong>{caseItem.title}</strong>
                         </td>
-                        <td>{event.company_name}</td>
-                        <td>{event.event_type || '-'}</td>
+                        <td>{caseItem.company_name}</td>
                         <td>
-                          {event.event_date
-                            ? new Date(event.event_date).toLocaleDateString('ru-RU')
-                            : '-'}
+                          {new Date(caseItem.application_deadline).toLocaleDateString('ru-RU')}
                         </td>
                         <td>
-                          <span className={`status-badge status-${event.status}`}>
-                            {getEventStatusLabel(event.status)}
+                          <span className={`status-badge status-${caseItem.status}`}>
+                            {getCaseStatusLabel(caseItem.status)}
                           </span>
                         </td>
                         <td>
-                          {event.status === 'active' && (
+                          {caseItem.status === 'active' && (
                             <button
-                              onClick={() => handleEventStatus(event.id, 'hidden')}
+                              onClick={() => handleCaseStatus(caseItem.id, 'archived')}
                               className="btn-small btn-warning"
                             >
-                              Скрыть
+                              В архив
                             </button>
                           )}
-                          {event.status === 'hidden' && (
+                          {caseItem.status === 'archived' && (
                             <button
-                              onClick={() => handleEventStatus(event.id, 'active')}
+                              onClick={() => handleCaseStatus(caseItem.id, 'active')}
                               className="btn-small btn-success"
                             >
-                              Показать
+                              Активировать
                             </button>
                           )}
                           <button
-                            onClick={() => handleDeleteEvent(event.id)}
+                            onClick={() => handleDeleteCase(caseItem.id)}
                             className="btn-small btn-danger"
                           >
                             🗑️ Удалить
@@ -385,11 +388,11 @@ function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'applications' && (
+        {activeTab === 'solutions' && (
           <div className="applications-section">
-            <h2>Управление заявками</h2>
-            {applications.length === 0 ? (
-              <p>Заявок не найдено</p>
+            <h2>Управление решениями</h2>
+            {solutions.length === 0 ? (
+              <p>Решений не найдено</p>
             ) : (
               <div className="companies-table">
                 <table>
@@ -398,7 +401,7 @@ function AdminDashboard() {
                       <th>Студент</th>
                       <th>Email</th>
                       <th>ВУЗ</th>
-                      <th>Мероприятие</th>
+                      <th>Кейс</th>
                       <th>Компания</th>
                       <th>Статус</th>
                       <th>Дата</th>
@@ -406,37 +409,65 @@ function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {applications.map((app) => (
-                      <tr key={app.id}>
-                        <td>{app.student_name}</td>
-                        <td>{app.student_email}</td>
-                        <td>{app.university || '-'}</td>
-                        <td>{app.event_title}</td>
-                        <td>{app.company_name}</td>
+                    {solutions.map((solution) => (
+                      <tr key={solution.id}>
+                        <td>{solution.first_name} {solution.last_name}</td>
+                        <td>{solution.email}</td>
+                        <td>{solution.university || '-'}</td>
+                        <td>{solution.case_title}</td>
+                        <td>{solution.company_name}</td>
                         <td>
-                          <span className={`status-badge status-${app.status}`}>
-                            {getApplicationStatusLabel(app.status)}
+                          <span className={`status-badge status-${solution.status}`}>
+                            {getSolutionStatusLabel(solution.status)}
                           </span>
                         </td>
                         <td>
-                          {app.created_at
-                            ? new Date(app.created_at).toLocaleDateString('ru-RU')
+                          {solution.created_at
+                            ? new Date(solution.created_at).toLocaleDateString('ru-RU')
                             : '-'}
                         </td>
                         <td>
-                          {app.status === 'pending' && (
+                          {solution.status === 'new' && (
                             <>
                               <button
                                 onClick={() =>
-                                  handleApplicationStatus(app.id, 'approved')
+                                  handleSolutionStatus(solution.id, 'viewed')
                                 }
-                                className="btn-small btn-success"
+                                className="btn-small btn-warning"
                               >
-                                ✓ Одобрить
+                                👁️ Просмотрено
                               </button>
                               <button
                                 onClick={() =>
-                                  handleApplicationStatus(app.id, 'rejected')
+                                  handleSolutionStatus(solution.id, 'invited')
+                                }
+                                className="btn-small btn-success"
+                              >
+                                ✓ Пригласить
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleSolutionStatus(solution.id, 'rejected')
+                                }
+                                className="btn-small btn-danger"
+                              >
+                                ✕ Отклонить
+                              </button>
+                            </>
+                          )}
+                          {solution.status === 'viewed' && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  handleSolutionStatus(solution.id, 'invited')
+                                }
+                                className="btn-small btn-success"
+                              >
+                                ✓ Пригласить
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleSolutionStatus(solution.id, 'rejected')
                                 }
                                 className="btn-small btn-danger"
                               >
@@ -522,27 +553,28 @@ function AdminDashboard() {
 
 function getStatusLabel(status) {
   const labels = {
-    pending: 'На модерации',
+    moderation: 'На модерации',
     active: 'Активна',
     rejected: 'Отклонена',
-    blocked: 'Заблокирована',
   };
   return labels[status] || status;
 }
 
-function getEventStatusLabel(status) {
+function getCaseStatusLabel(status) {
   const labels = {
-    active: 'Активно',
-    hidden: 'Скрыто',
-    closed: 'Завершено',
+    draft: 'Черновик',
+    active: 'Активен',
+    closed: 'Закрыт',
+    archived: 'В архиве',
   };
   return labels[status] || status;
 }
 
-function getApplicationStatusLabel(status) {
+function getSolutionStatusLabel(status) {
   const labels = {
-    pending: 'На рассмотрении',
-    approved: 'Одобрено',
+    new: 'Новое',
+    viewed: 'Просмотрено',
+    invited: 'Приглашен',
     rejected: 'Отклонено',
   };
   return labels[status] || status;

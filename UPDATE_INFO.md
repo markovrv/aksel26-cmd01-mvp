@@ -89,7 +89,7 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-**Доступ:** https://5173-3dba6d8b-400a-4c52-b98a-1616f70d3280.preview.promto.ai
+**Доступ:** http://localhost:5173
 
 ## 📁 Структура базы данных
 

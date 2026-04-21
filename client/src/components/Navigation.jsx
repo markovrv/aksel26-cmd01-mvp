@@ -9,7 +9,7 @@ function Navigation({ user, userType, onLogout }) {
     navigate('/login');
   };
 
-  const userName = userType === 'company' ? user.name : user.full_name;
+  const userName = userType === 'company' ? user.name : (user.first_name ? `${user.first_name} ${user.last_name}` : user.email);
   const displayName = userName || user.email;
 
   return (
@@ -23,7 +23,7 @@ function Navigation({ user, userType, onLogout }) {
             Карта
           </Link>
           {userType === 'student' && <Link to="/dashboard" className="nav-link">
-            Мои заявки
+            Мои решения
           </Link>}
           {userType === 'company' && <Link to="/dashboard" className="nav-link">
             Кабинет компании

@@ -4,11 +4,13 @@
   flex: 1;
   background: #f5f5f5;
   height: calc(100vh - 70px);
+  overflow: hidden;
 }
 
 .homepage.guest-view {
   background: white;
   height: auto;
+  overflow: auto;
 }
 
 .hero-section {
@@ -177,6 +179,110 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.company-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.company-meta-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.company-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.company-meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.company-meta-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.company-meta-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.12);
+}
+
+.company-meta-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.company-multiselect {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.company-filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+}
+
+.company-checkbox {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.company-checkbox input {
+  cursor: pointer;
+}
+
+.company-filter-name {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.company-filter-name:hover {
+  color: #667eea;
+  text-decoration-color: rgba(102, 126, 234, 0.5);
+}
+
+.company-filter-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #888;
 }
 
 .filter-btn {

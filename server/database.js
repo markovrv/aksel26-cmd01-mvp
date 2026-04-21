@@ -13,7 +13,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-// Wrap db.run and db.get to return Promises
 const run = (sql, params = []) => {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function(err) {
@@ -43,86 +42,83 @@ const all = (sql, params = []) => {
 
 export const initializeDatabase = async () => {
   try {
-    // Students table
+    // Users table (unified auth)
     await run(`
-      CREATE TABLE IF NOT EXISTS students (
+      CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        full_name TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('student', 'company', 'admin')),
+        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'blocked')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Student profiles
+    await run(`
+      CREATE TABLE IF NOT EXISTS student_profiles (
+        id TEXT PRIMARY KEY,
+        user_id TEXT UNIQUE NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
         university TEXT,
         course INTEGER,
+        specialization TEXT,
         city TEXT,
         phone TEXT,
         resume_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
-    // Companies table
+    // Company profiles
     await run(`
-      CREATE TABLE IF NOT EXISTS companies (
+      CREATE TABLE IF NOT EXISTS company_profiles (
         id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
+        user_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
-        inn TEXT,
+        short_description TEXT,
+        full_description TEXT,
         city TEXT,
-        website TEXT,
-        contact_person TEXT,
-        phone TEXT,
-        description TEXT,
+        address TEXT,
+        latitude REAL,
+        longitude REAL,
         logo_path TEXT,
-        status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'rejected', 'blocked')),
+        contact_person TEXT,
+        contact_phone TEXT,
+        contact_email TEXT,
+        moderation_status TEXT DEFAULT 'pending' CHECK(moderation_status IN ('moderation', 'active', 'rejected')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
-    // Company media (photos and videos)
+    // Cases (кейсы для решения)
     await run(`
-      CREATE TABLE IF NOT EXISTS company_media (
+      CREATE TABLE IF NOT EXISTS cases (
         id TEXT PRIMARY KEY,
         company_id TEXT NOT NULL,
-        type TEXT CHECK(type IN ('photo', 'video')),
-        path TEXT,
-        url TEXT,
-        title TEXT,
-        position INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (company_id) REFERENCES companies(id)
-      )
-    `);
-
-    // Events (мероприятия: кейсы, стажировки, экскурсии)
-    await run(`
-      CREATE TABLE IF NOT EXISTS events (
-        id TEXT PRIMARY KEY,
-        company_id TEXT NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('case', 'internship', 'tour')),
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         requirements TEXT,
         application_deadline DATETIME NOT NULL,
-        event_date DATETIME,
-        event_time TEXT,
-        format TEXT CHECK(format IN ('online', 'offline')),
-        max_participants INTEGER,
-        file_path TEXT,
-        view_count INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'closed', 'hidden', 'pending')),
+        task_file_path TEXT,
+        status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'active', 'closed', 'archived')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (company_id) REFERENCES companies(id)
+        FOREIGN KEY (company_id) REFERENCES company_profiles(id)
       )
     `);
 
-    // Applications (заявки на мероприятия)
+    // Solutions (решения студентов по кейсам)
     await run(`
-      CREATE TABLE IF NOT EXISTS applications (
+      CREATE TABLE IF NOT EXISTS solutions (
         id TEXT PRIMARY KEY,
-        event_id TEXT NOT NULL,
+        case_id TEXT NOT NULL,
         student_id TEXT NOT NULL,
         text_content TEXT,
         file_path TEXT,
@@ -130,8 +126,22 @@ export const initializeDatabase = async () => {
         status TEXT DEFAULT 'new' CHECK(status IN ('new', 'viewed', 'invited', 'rejected')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (event_id) REFERENCES events(id),
-        FOREIGN KEY (student_id) REFERENCES students(id)
+        FOREIGN KEY (case_id) REFERENCES cases(id),
+        FOREIGN KEY (student_id) REFERENCES student_profiles(id)
+      )
+    `);
+
+    // Notifications (уведомления)
+    await run(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        is_read INTEGER DEFAULT 0,
+        link_type TEXT,
+        link_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
@@ -147,19 +157,19 @@ export const initializeDatabase = async () => {
       )
     `);
 
-    // Admin users
+    // Admin profiles
     await run(`
-      CREATE TABLE IF NOT EXISTS admins (
+      CREATE TABLE IF NOT EXISTS admin_profiles (
         id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
+        user_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )
     `);
 
-    // Logs (для админ-панели)
+    // Logs
     await run(`
       CREATE TABLE IF NOT EXISTS logs (
         id TEXT PRIMARY KEY,
@@ -172,6 +182,14 @@ export const initializeDatabase = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add missing columns if they don't exist
+    try {
+      await run('ALTER TABLE company_profiles ADD COLUMN latitude REAL');
+    } catch (e) { /* Column might already exist */ }
+    try {
+      await run('ALTER TABLE company_profiles ADD COLUMN longitude REAL');
+    } catch (e) { /* Column might already exist */ }
 
     console.log('Database initialized successfully');
   } catch (error) {

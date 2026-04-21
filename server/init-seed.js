@@ -8,14 +8,23 @@ async function main() {
 
     // Check if database is already seeded
     const existingAdmin = await run(
-      'SELECT COUNT(*) as count FROM admins WHERE email = ?',
-      ['admin@platform.ru']
+      'SELECT COUNT(*) as count FROM users WHERE email = ? AND role = ?',
+      ['admin@platform.ru', 'admin']
     );
 
-    if (existingAdmin.count > 0) {
+    if (existingAdmin.lastID || existingAdmin.changes > 0) {
       console.log('Database already seeded. Skipping initialization.');
       process.exit(0);
     }
+
+    console.log('Clearing existing test data...');
+    await run('DELETE FROM solutions');
+    await run('DELETE FROM cases');
+    await run('DELETE FROM company_profiles');
+    await run('DELETE FROM student_profiles');
+    await run('DELETE FROM admin_profiles');
+    await run('DELETE FROM users');
+    await run('DELETE FROM sessions');
 
     console.log('Seeding test data...');
     await seedTestData();

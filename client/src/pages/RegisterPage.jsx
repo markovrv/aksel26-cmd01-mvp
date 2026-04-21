@@ -47,13 +47,14 @@ function RegisterPage({ onLogin }) {
         response = await authAPI.registerStudent({
           email: formData.email,
           password: formData.password,
-          full_name: formData.full_name,
+          first_name: formData.full_name.split(' ')[0] || formData.full_name,
+          last_name: formData.full_name.split(' ').slice(1).join(' ') || '-',
           university: formData.university,
           course: formData.course,
           city: formData.city,
           phone: formData.phone,
         });
-        onLogin(response.data.student, response.data.token, userType);
+        onLogin(response.data.user, response.data.token, userType);
         navigate('/');
       } else if (userType === 'admin') {
         response = await authAPI.registerAdmin({
@@ -61,21 +62,22 @@ function RegisterPage({ onLogin }) {
           password: formData.password,
           name: formData.admin_name,
         });
-        onLogin(response.data.admin, response.data.token, userType);
+        onLogin(response.data.user, response.data.token, userType);
         navigate('/admin');
       } else {
         response = await authAPI.registerCompany({
           email: formData.email,
           password: formData.password,
           name: formData.name,
-          inn: formData.inn,
           city: formData.city,
-          website: formData.website,
+          address: formData.website,
           contact_person: formData.contact_person,
-          phone: formData.phone,
-          description: formData.description,
+          contact_phone: formData.phone,
+          short_description: formData.description,
+          full_description: formData.description,
+          contact_email: formData.email,
         });
-        onLogin(response.data.company, response.data.token, userType);
+        onLogin(response.data.user, response.data.token, userType);
         navigate('/');
       }
     } catch (err) {

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { companyAPI } from '../api';
 import './CompanyProfile.css';
 
 function CompanyProfile() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [company, setCompany] = useState(null);
-  const [events, setEvents] = useState([]);
+  const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,7 +15,7 @@ function CompanyProfile() {
       try {
         const response = await companyAPI.getProfile(id);
         setCompany(response.data.company);
-        setEvents(response.data.events);
+        setCases(response.data.cases);
       } catch (error) {
         console.error('Error loading company:', error);
       } finally {
@@ -49,25 +50,27 @@ function CompanyProfile() {
           </div>
         </div>
 
-        {company.description && (
+        {company.full_description && (
           <div className="description-section">
             <h2>О компании</h2>
-            <p>{company.description}</p>
+            <p>{company.full_description}</p>
           </div>
         )}
 
-        {events.length > 0 && (
+        {cases.length > 0 && (
           <div className="events-section">
-            <h2>Мероприятия компании</h2>
+            <h2>Кейсы компании</h2>
             <div className="events-list">
-              {events.map((event) => (
-                <div key={event.id} className="event-card">
-                  <span className="event-type">{getEventTypeLabel(event.type)}</span>
-                  <h3>{event.title}</h3>
-                  <p>{event.description}</p>
+              {cases.map((caseItem) => (
+                <div key={caseItem.id} className="event-card">
+                  <h3>{caseItem.title}</h3>
+                  <p>{caseItem.description}</p>
                   <p className="deadline">
-                    📅 Срок: {new Date(event.application_deadline).toLocaleDateString('ru-RU')}
+                    📅 Дедлайн: {new Date(caseItem.application_deadline).toLocaleDateString('ru-RU')}
                   </p>
+                  <button className="btn btn-primary" onClick={() => navigate(`/case/${caseItem.id}`)}>
+                    Подробнее
+                  </button>
                 </div>
               ))}
             </div>
@@ -78,13 +81,6 @@ function CompanyProfile() {
   );
 }
 
-function getEventTypeLabel(type) {
-  const labels = {
-    case: '📋 Кейс',
-    internship: '🎓 Стажировка',
-    tour: '👁️ Экскурсия',
-  };
-  return labels[type] || type;
-}
+
 
 export default CompanyProfile;
