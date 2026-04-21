@@ -1,0 +1,97 @@
+.cases-header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding: 30px 0;
+}
+
+.cases-header h1 {
+  font-size: 32px;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.cases-header p {
+  font-size: 18px;
+  color: #666;
+}
+
+.cases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.case-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.case-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.case-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.case-header h3 {
+  flex: 1;
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.case-status {
+  background-color: #28a745;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.company-name {
+  color: #666;
+  font-size: 14px;
+  margin: 10px 0;
+}
+
+.case-description {
+  color: #555;
+  font-size: 14px;
+  margin: 15px 0;
+  flex-grow: 1;
+  line-height: 1.5;
+}
+
+.case-meta {
+  display: flex;
+  gap: 15px;
+  margin: 15px 0;
+  font-size: 13px;
+  color: #999;
+}
+
+.case-card .btn {
+  margin-top: auto;
+  width: 100%;
+  text-align: center;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 18px;
+}

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Docker setup helper script for server
+
+set -e
+
+echo "=== Industrial Tourism Platform - Server Docker Setup ==="
+
+# Build the Docker image
+echo "Building Docker image..."
+docker build -t industrial-tourism-server:latest -f Dockerfile .
+
+# Stop and remove existing container if running
+echo "Stopping existing container..."
+docker stop industrial-tourism-server 2>/dev/null || true
+docker rm industrial-tourism-server 2>/dev/null || true
+
+# Create data directories if they don't exist
+mkdir -p data uploads
+
+# Run the container
+echo "Starting container..."
+docker run -d \
+    --name industrial-tourism-server \
+    -p 5000:5000 \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/uploads:/app/uploads \
+    industrial-tourism-server:latest
+
+echo "Container started successfully!"
+echo "Server running at: http://localhost:5000"

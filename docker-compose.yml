@@ -1,0 +1,60 @@
+services:
+  # Backend API Server (internal only)
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: production
+    container_name: industrial-tourism-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+    volumes:
+      - server-data:/app/data
+      - server-uploads:/app/uploads
+    command: node server.js
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5000/api/events || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - industrial-tourism-network
+
+  # Frontend Client with nginx
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: industrial-tourism-client
+    restart: unless-stopped
+    ports:
+      - "21426:8080"
+    environment:
+      - VITE_API_URL=http://localhost:21426
+    depends_on:
+      - server
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - industrial-tourism-network
+
+networks:
+  industrial-tourism-network:
+    driver: bridge
+
+volumes:
+  server-data:
+    driver: local
+  server-uploads:
+    driver: local
+
+# Volumes are persistent - they keep data between container restarts
+# To reset database and delete all data run:
+# docker-compose down -v

@@ -1,0 +1,109 @@
+.company-profile {
+  background: white;
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.profile-header {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 40px;
+  padding-bottom: 30px;
+  border-bottom: 2px solid #eee;
+  align-items: flex-start;
+}
+
+.company-logo {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.profile-info h1 {
+  margin: 0 0 15px 0;
+  color: #333;
+}
+
+.profile-info .city {
+  margin: 10px 0;
+  color: #666;
+  font-size: 16px;
+}
+
+.profile-info a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.profile-info a:hover {
+  text-decoration: underline;
+}
+
+.description-section {
+  margin-bottom: 40px;
+}
+
+.description-section h2 {
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.description-section p {
+  color: #666;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.events-section h2 {
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.events-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.event-card {
+  background: #f9f9f9;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  transition: all 0.2s;
+}
+
+.event-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.event-type {
+  display: inline-block;
+  padding: 4px 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.event-card h3 {
+  margin: 10px 0;
+  color: #333;
+}
+
+.event-card p {
+  color: #666;
+  font-size: 14px;
+  margin: 10px 0;
+  line-height: 1.5;
+}
+
+.event-card .deadline {
+  color: #999;
+  font-size: 12px;
+}
