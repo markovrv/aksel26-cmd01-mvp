@@ -18,15 +18,19 @@ function LoginPage({ onLogin }) {
 
     try {
       let response;
+      let userData;
       if (userType === 'student') {
         response = await authAPI.loginStudent(email, password);
+        userData = response.data.student;
       } else if (userType === 'company') {
         response = await authAPI.loginCompany(email, password);
+        userData = response.data.company;
       } else {
         response = await authAPI.adminLogin(email, password);
+        userData = response.data.user;
       }
 
-      onLogin(response.data.user || response.data.admin, response.data.token, userType);
+      onLogin(userData, response.data.token, userType);
       navigate(userType === 'admin' ? '/admin' : '/');
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка входа');

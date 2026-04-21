@@ -115,6 +115,40 @@ app.post('/api/auth/student/login', async (req, res) => {
   }
 });
 
+// ============= ADMIN AUTH ROUTES =============
+
+app.post('/api/auth/admin/register', async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    }
+
+    const existing = await get('SELECT id FROM admins WHERE email = ?', [email]);
+    if (existing) {
+      return res.status(400).json({ error: 'Email уже зарегистрирован' });
+    }
+
+    const adminId = uuidv4();
+    const hashedPassword = await hashPassword(password);
+
+    await run(
+      'INSERT INTO admins (id, email, password, name) VALUES (?, ?, ?, ?)',
+      [adminId, email, hashedPassword, name]
+    );
+
+    const token = generateToken(adminId);
+    await createSession(adminId, 'admin', token);
+    await logAction(adminId, 'admin', 'register');
+
+    const admin = await get('SELECT id, email, name FROM admins WHERE id = ?', [adminId]);
+    res.status(201).json({ admin, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============= COMPANY AUTH ROUTES =============
 
 app.post('/api/auth/company/register', async (req, res) => {
@@ -206,6 +240,8 @@ app.get('/api/auth/me', async (req, res) => {
       user = await get('SELECT id, email, full_name, university, course, city FROM students WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
     } else if (userType === 'company') {
       user = await get('SELECT id, email, name, city, status FROM companies WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
+    } else if (userType === 'admin') {
+      user = await get('SELECT id, email, name FROM admins WHERE id = (SELECT user_id FROM sessions WHERE token = ?)', [token]);
     }
 
     if (!user) {
@@ -542,6 +578,37 @@ app.get('/api/student/dashboard', async (req, res) => {
   }
 });
 
+// ============= AUTH ROUTES =============
+
+app.post('/api/auth/admin/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    }
+
+    const admin = await get('SELECT * FROM admins WHERE email = ?', [email]);
+    if (!admin) {
+      return res.status(401).json({ error: 'Неверные учетные данные' });
+    }
+
+    const passwordMatch = await comparePasswords(password, admin.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Неверные учетные данные' });
+    }
+
+    const token = generateToken(admin.id);
+    await createSession(admin.id, 'admin', token);
+    await logAction(admin.id, 'admin', 'login');
+
+    const { password: _, ...adminWithoutPassword } = admin;
+    res.json({ user: adminWithoutPassword, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============= ADMIN ROUTES =============
 
 app.post('/api/admin/login', async (req, res) => {
@@ -672,6 +739,204 @@ app.get('/api/admin/logs', async (req, res) => {
 
     const logs = await all('SELECT * FROM logs ORDER BY created_at DESC LIMIT 100');
     res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= ADMIN STUDENTS =============
+
+app.get('/api/admin/students', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const students = await all('SELECT id, email, full_name, university, course, city, created_at FROM students ORDER BY created_at DESC');
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/students/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('DELETE FROM applications WHERE student_id = ?', [req.params.id]);
+    await run('DELETE FROM sessions WHERE user_id = ? AND user_type = ?', [req.params.id, 'student']);
+    await run('DELETE FROM students WHERE id = ?', [req.params.id]);
+    await logAction(session.user_id, 'admin', 'delete_student', 'student', req.params.id);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= ADMIN EVENTS =============
+
+app.get('/api/admin/events', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const events = await all(`
+      SELECT e.*, c.name as company_name
+      FROM events e
+      JOIN companies c ON e.company_id = c.id
+      ORDER BY e.created_at DESC
+    `);
+    res.json(events);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/events/:id/status', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { status } = req.body;
+
+    if (!token || !status) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('UPDATE events SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    await logAction(session.user_id, 'admin', 'update_event_status', 'event', req.params.id, { status });
+
+    const event = await get('SELECT * FROM events WHERE id = ?', [req.params.id]);
+    res.json(event);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/events/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('DELETE FROM applications WHERE event_id = ?', [req.params.id]);
+    await run('DELETE FROM events WHERE id = ?', [req.params.id]);
+    await logAction(session.user_id, 'admin', 'delete_event', 'event', req.params.id);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= ADMIN APPLICATIONS =============
+
+app.get('/api/admin/applications', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const applications = await all(`
+      SELECT a.*, 
+             s.full_name as student_name, s.email as student_email, s.university,
+             e.title as event_title,
+             c.name as company_name
+      FROM applications a
+      JOIN students s ON a.student_id = s.id
+      JOIN events e ON a.event_id = e.id
+      JOIN companies c ON e.company_id = c.id
+      ORDER BY a.created_at DESC
+    `);
+    res.json(applications);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/applications/:id/status', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const { status } = req.body;
+
+    if (!token || !status) {
+      return res.status(400).json({ error: 'Заполните обязательные поля' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    await run('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, req.params.id]);
+    await logAction(session.user_id, 'admin', 'update_application_status', 'application', req.params.id, { status });
+
+    const application = await get('SELECT * FROM applications WHERE id = ?', [req.params.id]);
+    res.json(application);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= ADMIN ADMINS =============
+
+app.get('/api/admin/admins', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const session = await get('SELECT user_id FROM sessions WHERE token = ? AND user_type = ?', [token, 'admin']);
+    if (!session) {
+      return res.status(401).json({ error: 'Not authorized' });
+    }
+
+    const admins = await all('SELECT id, email, name, created_at FROM admins ORDER BY created_at DESC');
+    res.json(admins);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

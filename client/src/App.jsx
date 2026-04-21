@@ -76,6 +76,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
               <Route path="/register" element={<RegisterPage onLogin={handleLogin} />} />
+              <Route path="/admin" element={<Navigate to="/login" />} />
               <Route path="*" element={<Navigate to="/" />} />
             </>
           ) : (
@@ -85,8 +86,9 @@ function App() {
               <Route path="/event/:id" element={<EventDetail user={user} userType={userType} />} />
               {userType === 'student' && <Route path="/dashboard" element={<StudentDashboard user={user} />} />}
               {userType === 'company' && <Route path="/dashboard" element={<CompanyDashboard user={user} />} />}
-              {userType === 'admin' && <Route path="/admin" element={<AdminDashboard />} />}
-              <Route path="*" element={<Navigate to="/" />} />
+              <Route path="/admin" element={userType === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
+              {userType === 'admin' && <Route path="*" element={<Navigate to="/admin" />} />}
+              {userType !== 'admin' && <Route path="*" element={<Navigate to="/" />} />}
             </>
           )}
         </Routes>

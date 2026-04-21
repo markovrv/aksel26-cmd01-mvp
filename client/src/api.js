@@ -20,11 +20,12 @@ api.interceptors.request.use((config) => {
 export const authAPI = {
   registerStudent: (data) => api.post('/auth/student/register', data),
   registerCompany: (data) => api.post('/auth/company/register', data),
+  registerAdmin: (data) => api.post('/auth/admin/register', data),
   loginStudent: (email, password) => api.post('/auth/student/login', { email, password }),
   loginCompany: (email, password) => api.post('/auth/company/login', { email, password }),
   logout: () => api.post('/auth/logout'),
   getCurrentUser: (userType) => api.get('/auth/me'),
-  adminLogin: (email, password) => api.post('/admin/login', { email, password }),
+  adminLogin: (email, password) => api.post('/auth/admin/login', { email, password }),
 };
 
 export const eventsAPI = {
@@ -58,6 +59,14 @@ export const studentAPI = {
 export const adminAPI = {
   getCompanies: () => api.get('/admin/companies'),
   updateCompanyStatus: (id, status) => api.put(`/admin/company/${id}/status`, { status }),
+  getStudents: () => api.get('/admin/students'),
+  deleteStudent: (id) => api.delete(`/admin/students/${id}`),
+  getEvents: () => api.get('/admin/events'),
+  updateEventStatus: (id, status) => api.put(`/admin/events/${id}/status`, { status }),
+  deleteEvent: (id) => api.delete(`/admin/events/${id}`),
+  getApplications: () => api.get('/admin/applications'),
+  updateApplicationStatus: (id, status) => api.put(`/admin/applications/${id}/status`, { status }),
+  getAdmins: () => api.get('/admin/admins'),
   getStats: () => api.get('/admin/stats'),
   getLogs: () => api.get('/admin/logs'),
 };

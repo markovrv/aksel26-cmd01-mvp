@@ -20,6 +20,7 @@ function RegisterPage({ onLogin }) {
     website: '',
     contact_person: '',
     description: '',
+    admin_name: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -52,6 +53,16 @@ function RegisterPage({ onLogin }) {
           city: formData.city,
           phone: formData.phone,
         });
+        onLogin(response.data.student, response.data.token, userType);
+        navigate('/');
+      } else if (userType === 'admin') {
+        response = await authAPI.registerAdmin({
+          email: formData.email,
+          password: formData.password,
+          name: formData.admin_name,
+        });
+        onLogin(response.data.admin, response.data.token, userType);
+        navigate('/admin');
       } else {
         response = await authAPI.registerCompany({
           email: formData.email,
@@ -64,10 +75,9 @@ function RegisterPage({ onLogin }) {
           phone: formData.phone,
           description: formData.description,
         });
+        onLogin(response.data.company, response.data.token, userType);
+        navigate('/');
       }
-
-      onLogin(response.data.student || response.data.company, response.data.token, userType);
-      navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка регистрации');
     } finally {
@@ -99,6 +109,15 @@ function RegisterPage({ onLogin }) {
               onChange={(e) => setUserType(e.target.value)}
             />
             Предприятие
+          </label>
+          <label>
+            <input
+              type="radio"
+              value="admin"
+              checked={userType === 'admin'}
+              onChange={(e) => setUserType(e.target.value)}
+            />
+            Администратор
           </label>
         </div>
 
@@ -153,6 +172,24 @@ function RegisterPage({ onLogin }) {
               <div className="form-group">
                 <label>Телефон</label>
                 <input type="tel" name="phone" value={formData.phone} onChange={handleChange} />
+              </div>
+            </>
+          ) : userType === 'admin' ? (
+            <>
+              <div className="form-group">
+                <label>ФИО</label>
+                <input
+                  type="text"
+                  name="admin_name"
+                  value={formData.admin_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Email</label>
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required />
               </div>
             </>
           ) : (
