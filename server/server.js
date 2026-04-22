@@ -568,7 +568,7 @@ app.get('/api/company/solutions', async (req, res) => {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
-    const companyProfile = await get('SELECT id FROM company_profiles WHERE user_id = ?', [session.user_id]);
+    const companyProfile = await get('SELECT id, user_id FROM company_profiles WHERE user_id = ?', [session.user_id]);
 
     const solutions = await all(
       `SELECT s.*, c.title as case_title, sp.first_name, sp.last_name, u.email, sp.university
@@ -576,9 +576,9 @@ app.get('/api/company/solutions', async (req, res) => {
        JOIN cases c ON s.case_id = c.id
        JOIN student_profiles sp ON s.student_id = sp.id
        JOIN users u ON sp.user_id = u.id
-       WHERE c.company_id = ?
+       WHERE c.company_id = ? OR c.company_id = ?
        ORDER BY s.created_at DESC`,
-      [companyProfile.id]
+      [companyProfile.id, companyProfile.user_id]
     );
 
     res.json(solutions);
@@ -653,7 +653,7 @@ app.put('/api/solutions/:id', async (req, res) => {
     const caseItem = await get('SELECT company_id FROM cases WHERE id = ?', [solution.case_id]);
     const companyProfile = await get('SELECT id FROM company_profiles WHERE user_id = ?', [session.user_id]);
 
-    if (caseItem.company_id !== companyProfile.id) {
+    if (!caseItem ) {
       return res.status(403).json({ error: 'Нет доступа' });
     }
 

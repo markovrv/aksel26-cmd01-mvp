@@ -13,8 +13,15 @@ function CompanyDashboard({ user }) {
     requirements: '',
     application_deadline: '',
   });
-  const [editCaseData, setEditCaseData] = useState({ title: '', description: '', requirements: '', application_deadline: '' });
+  const [editCaseData, setEditCaseData] = useState({ 
+    title: '', 
+    description: '', 
+    requirements: '', 
+    application_deadline: '' 
+  });
   const [editingCaseId, setEditingCaseId] = useState(null);
+  const [selectedSolution, setSelectedSolution] = useState(null);
+  const [showSolutionModal, setShowSolutionModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -38,8 +45,16 @@ function CompanyDashboard({ user }) {
     e.preventDefault();
     try {
       const response = await casesAPI.create(createData);
-      setDashboard((prev) => ({ ...prev, cases: [response.data, ...(prev?.cases || [])] }));
-      setCreateData({ title: '', description: '', requirements: '', application_deadline: '' });
+      setDashboard((prev) => ({ 
+        ...prev, 
+        cases: [response.data, ...(prev?.cases || [])] 
+      }));
+      setCreateData({ 
+        title: '', 
+        description: '', 
+        requirements: '', 
+        application_deadline: '' 
+      });
       setShowCreateForm(false);
     } catch (error) {
       console.error('Error creating case:', error);
@@ -50,10 +65,40 @@ function CompanyDashboard({ user }) {
   const handleSolutionStatus = async (solutionId, status) => {
     try {
       await solutionsAPI.updateStatus(solutionId, status);
-      setSolutions((prev) => prev.map((s) => (s.id === solutionId ? { ...s, status } : s)));
+      setSolutions((prev) => 
+        prev.map((s) => (s.id === solutionId ? { ...s, status } : s))
+      );
     } catch (error) {
       console.error('Error updating solution status:', error);
       alert(error.response?.data?.error || 'Не удалось обновить статус');
+    }
+  };
+
+  const handleViewSolution = (solution) => {
+    setSelectedSolution(solution);
+    setShowSolutionModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedSolution(null);
+    setShowSolutionModal(false);
+  };
+
+  const handleSolutionAction = async (solutionId, action) => {
+    try {
+      const statusMap = {
+        invite: 'invited',
+        reject: 'rejected',
+      };
+      const newStatus = statusMap[action];
+      await solutionsAPI.updateStatus(solutionId, newStatus);
+      setSolutions((prev) => 
+        prev.map((s) => (s.id === solutionId ? { ...s, status: newStatus } : s))
+      );
+      handleCloseModal();
+    } catch (error) {
+      console.error(`Error ${action}ing solution:`, error);
+      alert(error.response?.data?.error || `Не удалось ${action}ить решение`);
     }
   };
 
@@ -62,7 +107,7 @@ function CompanyDashboard({ user }) {
       title: caseItem.title,
       description: caseItem.description,
       requirements: caseItem.requirements,
-      application_deadline: caseItem.application_deadline.split('T')[0], // Convert to YYYY-MM-DD for date input
+      application_deadline: caseItem.application_deadline?.split('T')[0] || '',
     });
     setEditingCaseId(caseItem.id);
   };
@@ -71,15 +116,19 @@ function CompanyDashboard({ user }) {
     e.preventDefault();
     try {
       const response = await casesAPI.update(editingCaseId, editCaseData);
-      // Update the case in dashboard state
       setDashboard((prev) => ({
         ...prev,
         cases: prev.cases.map((c) =>
-          c.id === editingCaseId ? { ...response.data, ...c } : c
+          c.id === editingCaseId ? response.data : c
         ),
       }));
       setEditingCaseId(null);
-      setEditCaseData({ title: '', description: '', requirements: '', application_deadline: '' });
+      setEditCaseData({ 
+        title: '', 
+        description: '', 
+        requirements: '', 
+        application_deadline: '' 
+      });
     } catch (error) {
       console.error('Error updating case:', error);
       alert(error.response?.data?.error || 'Не удалось обновить кейс');
@@ -88,7 +137,12 @@ function CompanyDashboard({ user }) {
 
   const handleCancelEdit = () => {
     setEditingCaseId(null);
-    setEditCaseData({ title: '', description: '', requirements: '', application_deadline: '' });
+    setEditCaseData({ 
+      title: '', 
+      description: '', 
+      requirements: '', 
+      application_deadline: '' 
+    });
   };
 
   const handleDeleteCase = async (caseId) => {
@@ -97,7 +151,6 @@ function CompanyDashboard({ user }) {
     }
     try {
       await casesAPI.deleteCompanyCase(caseId);
-      // Remove case from dashboard state
       setDashboard((prev) => ({
         ...prev,
         cases: prev.cases.filter((c) => c.id !== caseId),
@@ -121,16 +174,10 @@ function CompanyDashboard({ user }) {
           <h2>О компании</h2>
           {dashboard?.company && (
             <div className="profile-info">
-              <p>
-                <strong>Название:</strong> {dashboard.company.name}
-              </p>
-              <p>
-                <strong>Email:</strong> {dashboard.company.email}
-              </p>
+              <p><strong>Название:</strong> {dashboard.company.name}</p>
+              <p><strong>Email:</strong> {dashboard.company.email}</p>
               {dashboard.company.city && (
-                <p>
-                  <strong>Город:</strong> {dashboard.company.city}
-                </p>
+                <p><strong>Город:</strong> {dashboard.company.city}</p>
               )}
               {dashboard.company.website && (
                 <p>
@@ -252,11 +299,23 @@ function CompanyDashboard({ user }) {
                         <span>
                           📅 Дедлайн: {new Date(caseItem.application_deadline).toLocaleDateString('ru-RU')}
                         </span>
-                        <span className={`status-${caseItem.status}`}>{getCaseStatusLabel(caseItem.status)}</span>
+                        <span className={`status-${caseItem.status}`}>
+                          {getCaseStatusLabel(caseItem.status)}
+                        </span>
                       </div>
                       <div className="case-actions">
-                        <button onClick={() => handleEditCase(caseItem)} className="btn-small btn-warning">Редактировать</button>
-                        <button onClick={() => handleDeleteCase(caseItem.id)} className="btn-small btn-danger">Удалить</button>
+                        <button 
+                          onClick={() => handleEditCase(caseItem)} 
+                          className="btn-small btn-warning"
+                        >
+                          Редактировать
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCase(caseItem.id)} 
+                          className="btn-small btn-danger"
+                        >
+                          Удалить
+                        </button>
                       </div>
                     </>
                   )}
@@ -309,9 +368,18 @@ function CompanyDashboard({ user }) {
                             </td>
                             <td>{new Date(solution.created_at).toLocaleDateString('ru-RU')}</td>
                             <td>
-                              <button className="btn-small btn-warning" onClick={() => handleSolutionStatus(solution.id, 'viewed')}>Просмотрено</button>
-                              <button className="btn-small btn-success" onClick={() => handleSolutionStatus(solution.id, 'invited')}>Пригласить</button>
-                              <button className="btn-small btn-danger" onClick={() => handleSolutionStatus(solution.id, 'rejected')}>Отклонить</button>
+                              <button 
+                                className="btn-small btn-info" 
+                                onClick={() => handleViewSolution(solution)}
+                              >
+                                Просмотр
+                              </button>
+                              <button 
+                                className="btn-small btn-warning" 
+                                onClick={() => handleSolutionStatus(solution.id, 'viewed')}
+                              >
+                                Просмотрено
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -323,13 +391,71 @@ function CompanyDashboard({ user }) {
             })
           )}
         </div>
+
+        {showSolutionModal && selectedSolution && (
+          <div className="modal-overlay" onClick={handleCloseModal}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>
+                  Решение студента: {selectedSolution.first_name} {selectedSolution.last_name}
+                </h3>
+                <button className="modal-close" onClick={handleCloseModal}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="solution-details">
+                  <h4>Данные решения</h4>
+                  <p><strong>Кейс:</strong> {selectedSolution.case_title}</p>
+                  <p><strong>Студент:</strong> {selectedSolution.first_name} {selectedSolution.last_name}</p>
+                  <p><strong>Email:</strong> {selectedSolution.email}</p>
+                  <p><strong>ВУЗ:</strong> {selectedSolution.university || 'Не указан'}</p>
+                  <p><strong>Статус:</strong> {getStatusLabel(selectedSolution.status)}</p>
+                  <p><strong>Дата решения:</strong> {new Date(selectedSolution.created_at).toLocaleDateString('ru-RU')}</p>
+                  <p><strong>Текст решения:</strong></p>
+                  <div className="solution-text">
+                    {selectedSolution.text_content || 'Решение без текста'}
+                  </div>
+                  {selectedSolution.file_path && (
+                    <p>
+                      <strong>Файл:</strong>{' '}
+                      <a 
+                        href={`/api/uploads/${selectedSolution.file_path}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        Скачать
+                      </a>
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  className="btn btn-warning" 
+                  onClick={() => handleSolutionAction(selectedSolution.id, 'invite')}
+                >
+                  Пригласить
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  onClick={() => handleSolutionAction(selectedSolution.id, 'reject')}
+                >
+                  Отклонить
+                </button>
+                <button className="btn btn-secondary" onClick={handleCloseModal}>
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-
-
+// Вынесенные функции статусов
 function getStatusLabel(status) {
   const labels = {
     new: 'Новая',
