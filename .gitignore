@@ -14,10 +14,6 @@ build/
 *.db
 *.sqlite
 
-# Uploads (generated content)
-uploads/
-data/
-
 # Logs
 *.log
 logs/
