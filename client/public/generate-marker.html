@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HIRO Marker Generator - AR Industrial Guide</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #0d1b2a;
+        color: white;
+        min-height: 100vh;
+        padding: 40px 20px;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        text-align: center;
+      }
+      h1 {
+        color: #00c2d4;
+        margin-bottom: 10px;
+        font-size: 2rem;
+      }
+      .subtitle {
+        color: #8b9caf;
+        margin-bottom: 40px;
+      }
+      .marker-preview {
+        background: white;
+        padding: 40px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 30px;
+        box-shadow: 0 20px 60px rgba(0, 194, 212, 0.2);
+      }
+      canvas {
+        display: block;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: #00c2d4;
+        color: #0d1b2a;
+        padding: 15px 30px;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        text-decoration: none;
+        margin: 10px;
+        cursor: pointer;
+        border: none;
+        transition: all 0.3s;
+      }
+      .btn:hover {
+        background: #00a5bb;
+        transform: translateY(-2px);
+      }
+      .instructions {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        padding: 30px;
+        text-align: left;
+        margin-top: 40px;
+      }
+      .instructions h2 {
+        color: #00c2d4;
+        margin-bottom: 20px;
+      }
+      .instructions ul {
+        list-style: none;
+        padding: 0;
+      }
+      .instructions li {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+      }
+      .instructions li:last-child {
+        border-bottom: none;
+      }
+      .instructions .num {
+        background: #00c2d4;
+        color: #0d1b2a;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .print-note {
+        background: rgba(0, 194, 212, 0.1);
+        border: 1px solid #00c2d4;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 30px;
+      }
+      .print-note h3 {
+        color: #00c2d4;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎯 HIRO AR Маркер</h1>
+      <p class="subtitle">
+        Сгенерируйте и распечатайте маркер для AR-экскурсий
+      </p>
+
+      <div class="marker-preview">
+        <canvas id="markerCanvas" width="400" height="400"></canvas>
+      </div>
+
+      <div>
+        <button class="btn" onclick="downloadPNG()">
+          ⬇️ Скачать PNG (высокое качество)
+        </button>
+        <button class="btn" onclick="downloadPDF()">
+          🖨️ Скачать PDF для печати
+        </button>
+      </div>
+
+      <div class="print-note">
+        <h3>📋 Инструкция по печати:</h3>
+        <p>Для лучшего результата распечатайте маркер:</p>
+        <ul style="margin-top: 10px">
+          <li>• На листе A4 или A5</li>
+          <li>• В цвете</li>
+          <li>• Без масштабирования</li>
+          <li>• На глянцевой бумаге</li>
+        </ul>
+      </div>
+
+      <div class="instructions">
+        <h2>📱 Как использовать:</h2>
+        <ul>
+          <li>
+            <span class="num">1</span>
+            <span
+              >Скачайте и распечатайте маркер, либо откройте его на втором
+              устройстве</span
+            >
+          </li>
+          <li>
+            <span class="num">2</span>
+            <span
+              >На странице AR-экскурсии нажмите кнопку "Как увидеть AR"</span
+            >
+          </li>
+          <li>
+            <span class="num">3</span>
+            <span>Разрешите доступ к камере браузеру</span>
+          </li>
+          <li>
+            <span class="num">4</span>
+            <span>Наведите камеру на распечатанный маркер</span>
+          </li>
+          <li>
+            <span class="num">5</span>
+            <span>Увидите 3D модель с анимацией!</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("markerCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // HIRO pattern (16x16 binary matrix)
+      const hiro = [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+        [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      ];
+
+      const cellSize = canvas.width / 16;
+      const borderWidth = 4;
+
+      // Draw white background with border
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw border
+      ctx.strokeStyle = "#333";
+      ctx.lineWidth = borderWidth;
+      ctx.strokeRect(
+        borderWidth / 2,
+        borderWidth / 2,
+        canvas.width - borderWidth,
+        canvas.height - borderWidth,
+      );
+
+      // Draw pattern
+      for (let row = 0; row < 16; row++) {
+        for (let col = 0; col < 16; col++) {
+          const x = col * cellSize + borderWidth;
+          const y = row * cellSize + borderWidth;
+          const size = cellSize - 2;
+
+          ctx.fillStyle = hiro[row][col] === 1 ? "black" : "white";
+          ctx.fillRect(x + 1, y + 1, size, size);
+        }
+      }
+
+      // Add "HIRO" label below
+      ctx.fillStyle = "#333";
+      ctx.font = "bold 24px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        "HIRO Marker - AR Industrial Guide",
+        canvas.width / 2,
+        canvas.height - 10,
+      );
+
+      function downloadPNG() {
+        const link = document.createElement("a");
+        link.download = "hiro-marker-ar-guide.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
+
+      function downloadPDF() {
+        // Simple PDF generation using canvas data
+        const imgData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+        });
+
+        // Calculate size to fit A4
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 30;
+        const maxSize = Math.min(
+          pageWidth - margin * 2,
+          pageHeight - margin * 2 - 40,
+        );
+
+        pdf.addImage(imgData, "PNG", margin, margin + 10, maxSize, maxSize);
+        pdf.setFontSize(12);
+        pdf.text(
+          "HIRO AR Marker - Industrial Guide",
+          pageWidth / 2,
+          pageHeight - 20,
+          { align: "center" },
+        );
+        pdf.save("hiro-marker-ar-guide.pdf");
+      }
+
+      // Load jsPDF dynamically
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      document.head.appendChild(script);
+    </script>
+  </body>
+</html>

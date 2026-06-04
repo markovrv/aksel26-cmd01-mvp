@@ -1,0 +1,255 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   CSS Custom Properties (Design Tokens)
+   ============================================ */
+
+:root {
+    --color-bg: #0D1B2A;
+    --color-surface: #FFFFFF;
+    --color-surface-2: #EEF2F7;
+    --color-text: #1A2332;
+    --color-text-muted: #94A3B8;
+    --color-primary: #00C2D4;
+    --color-primary-hover: #00A3B8;
+    --color-primary-light: #D0F5F8;
+    --color-success: #2ECC71;
+    --color-error: #E74C3C;
+    --color-warning: #F39C12;
+    --color-ar-overlay: rgba(0, 194, 212, 0.15);
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 20px;
+    --transition: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html {
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+.font-montserrat {
+    font-family: 'Montserrat', sans-serif;
+}
+
+.font-inter {
+    font-family: 'Inter', sans-serif;
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-surface-2);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-primary);
+    border-radius: 3px;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideDown {
+    from { 
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes confetti-fall {
+    0% {
+        transform: translateY(-100vh) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideDown {
+    animation: slideDown 0.3s ease-out;
+}
+
+.animate-slideUp {
+    animation: slideUp 0.3s ease-out;
+}
+
+.animate-pulse {
+    animation: pulse 2s infinite;
+}
+
+.animate-bounce {
+    animation: bounce 1s infinite;
+}
+
+/* ============================================
+   AR-specific Styles
+   ============================================ */
+
+.ar-overlay {
+    background: var(--color-ar-overlay);
+    backdrop-filter: blur(4px);
+}
+
+.ar-camera-bg {
+    background: linear-gradient(135deg, var(--color-bg) 0%, #1B3A5C 100%);
+}
+
+/* ============================================
+   Glassmorphism Effect
+   ============================================ */
+
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   Button Base Styles
+   ============================================ */
+
+.btn-primary {
+    @apply bg-primary text-white font-montserrat font-semibold;
+    @apply px-6 py-3 rounded-xl transition-all duration-200;
+    @apply hover:bg-primary-hover active:scale-95;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+}
+
+.btn-secondary {
+    @apply bg-white text-text-main font-inter font-medium;
+    @apply px-6 py-3 rounded-xl transition-all duration-200;
+    @apply hover:bg-surface-2 active:scale-95;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+/* ============================================
+   Input Styles
+   ============================================ */
+
+.input-field {
+    @apply w-full px-4 py-3 rounded-xl border-2 border-surface-2;
+    @apply font-inter text-text-main placeholder-text-muted;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:border-primary;
+}
+
+.input-error {
+    @apply border-error focus:border-error;
+}
+
+/* ============================================
+   Card Styles
+   ============================================ */
+
+.card {
+    @apply bg-white rounded-2xl shadow-lg overflow-hidden;
+}
+
+.card-elevated {
+    @apply card shadow-xl;
+}
+
+/* ============================================
+   Bottom Sheet Animation
+   ============================================ */
+
+.bottom-sheet {
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bottom-sheet.open {
+    transform: translateY(0);
+}
+
+/* ============================================
+   Confetti Container
+   ============================================ */
+
+.confetti-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 9999;
+}
+
+.confetti {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    animation: confetti-fall 3s linear forwards;
+}
